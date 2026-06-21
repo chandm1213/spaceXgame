@@ -643,6 +643,32 @@ function Menu() {
           <span><span className="text-cyan-400/80">RIGHT STICK</span>&nbsp;&nbsp;AIM &amp; FIRE</span>
           <span><span className="text-cyan-400/80">BOOST</span>&nbsp;&nbsp;AFTERBURNER</span>
         </div>
+
+        {/* Social links */}
+        <div className="mt-8 flex items-center gap-4">
+          <a
+            href="https://t.me/+6m_1n4OJlXtmMDNk"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="clip-corners flex items-center gap-2 border border-cyan-400/30 bg-slate-950/50 px-4 py-2 text-[10px] tracking-[0.3em] text-cyan-300/80 backdrop-blur-sm transition-all hover:border-cyan-300 hover:text-cyan-200"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.196 13.9l-2.968-.924c-.645-.204-.657-.645.136-.953l11.57-4.461c.537-.194 1.006.131.96.659z"/>
+            </svg>
+            TELEGRAM
+          </a>
+          <a
+            href="https://x.com/SpaceXgamess"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="clip-corners flex items-center gap-2 border border-cyan-400/30 bg-slate-950/50 px-4 py-2 text-[10px] tracking-[0.3em] text-cyan-300/80 backdrop-blur-sm transition-all hover:border-cyan-300 hover:text-cyan-200"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.632 5.905-5.632zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+            FOLLOW ON X
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -698,6 +724,32 @@ function GameOver() {
       >
         RELAUNCH
       </button>
+
+      {/* Social links */}
+      <div className="mt-6 flex items-center gap-4">
+        <a
+          href="https://t.me/+6m_1n4OJlXtmMDNk"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="clip-corners flex items-center gap-2 border border-cyan-400/30 bg-slate-950/50 px-4 py-2 text-[10px] tracking-[0.3em] text-cyan-300/80 backdrop-blur-sm transition-all hover:border-cyan-300 hover:text-cyan-200"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.196 13.9l-2.968-.924c-.645-.204-.657-.645.136-.953l11.57-4.461c.537-.194 1.006.131.96.659z"/>
+          </svg>
+          TELEGRAM
+        </a>
+        <a
+          href="https://x.com/SpaceXgamess"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="clip-corners flex items-center gap-2 border border-cyan-400/30 bg-slate-950/50 px-4 py-2 text-[10px] tracking-[0.3em] text-cyan-300/80 backdrop-blur-sm transition-all hover:border-cyan-300 hover:text-cyan-200"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.632 5.905-5.632zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+          FOLLOW ON X
+        </a>
+      </div>
     </div>
   );
 }
