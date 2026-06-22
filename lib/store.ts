@@ -186,23 +186,21 @@ export const useGame = create<GameState>((set, get) => ({
     const s = get();
     const alien = s.aliens.find((a) => a.id === id);
     if (!alien) return;
+    // Star fragments always scatter, even on crash — crash damage is already the penalty
     const drops: CrystalData[] = [];
-    if (!byCrash) {
-      // Star fragments scatter from the kill in low gravity
-      const count = alien.kind === 2 ? 9 : alien.kind === 0 ? 3 : 2;
-      for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 1 + Math.random() * (alien.kind === 2 ? 4 : 2.5);
-        drops.push({
-          id: uid(),
-          pos: new THREE.Vector3(
-            alien.pos.x + Math.cos(angle) * radius,
-            1.6 + Math.random() * 1.5,
-            alien.pos.z + Math.sin(angle) * radius
-          ),
-          seed: Math.random() * 100,
-        });
-      }
+    const count = alien.kind === 2 ? 9 : alien.kind === 0 ? 3 : 2;
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 1 + Math.random() * (alien.kind === 2 ? 4 : 2.5);
+      drops.push({
+        id: uid(),
+        pos: new THREE.Vector3(
+          alien.pos.x + Math.cos(angle) * radius,
+          1.6 + Math.random() * 1.5,
+          alien.pos.z + Math.sin(angle) * radius
+        ),
+        seed: Math.random() * 100,
+      });
     }
     const gained = alien.kind === 2 ? 750 : 100;
     set({
@@ -232,14 +230,19 @@ export const useGame = create<GameState>((set, get) => ({
   removeBolt: (id) => set((s) => ({ bolts: s.bolts.filter((b) => b.id !== id) })),
 
   collectCrystal: (id) => {
-    set((s) => ({
-      crystals: s.crystals.filter((c) => c.id !== id),
-      fragments: s.fragments + 1,
-      score: s.score + 25,
-      oxygen: Math.min(100, s.oxygen + 5),
-      fuel: Math.min(100, s.fuel + 4),
-    }));
-    checkMission(get, set);
+    let counted = false;
+    set((s) => {
+      if (!s.crystals.some((c) => c.id === id)) return s;
+      counted = true;
+      return {
+        crystals: s.crystals.filter((c) => c.id !== id),
+        fragments: s.fragments + 1,
+        score: s.score + 25,
+        oxygen: Math.min(100, s.oxygen + 5),
+        fuel: Math.min(100, s.fuel + 4),
+      };
+    });
+    if (counted) checkMission(get, set);
   },
 
   spawnAsteroid: (pos, vel, big) =>
@@ -262,22 +265,21 @@ export const useGame = create<GameState>((set, get) => ({
     const s = get();
     const rock = s.asteroids.find((a) => a.id === id);
     if (!rock) return;
+    // Crystal shards always drop — crash damage is already the penalty
     const drops: CrystalData[] = [];
-    if (!byCrash) {
-      const count = rock.big ? 4 : 2;
-      for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 0.5 + Math.random() * rock.radius;
-        drops.push({
-          id: uid(),
-          pos: new THREE.Vector3(
-            rock.pos.x + Math.cos(angle) * radius,
-            1.6 + Math.random() * 1.5,
-            rock.pos.z + Math.sin(angle) * radius
-          ),
-          seed: Math.random() * 100,
-        });
-      }
+    const count = rock.big ? 4 : 2;
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 0.5 + Math.random() * rock.radius;
+      drops.push({
+        id: uid(),
+        pos: new THREE.Vector3(
+          rock.pos.x + Math.cos(angle) * radius,
+          1.6 + Math.random() * 1.5,
+          rock.pos.z + Math.sin(angle) * radius
+        ),
+        seed: Math.random() * 100,
+      });
     }
     set({
       asteroids: s.asteroids.filter((a) => a.id !== id),

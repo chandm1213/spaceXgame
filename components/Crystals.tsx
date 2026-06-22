@@ -21,17 +21,17 @@ function Crystal({ data }: { data: CrystalData }) {
     if (game.status !== 'playing') return;
 
     const t = state.clock.elapsedTime + data.seed;
-    const distSq = data.pos.distanceToSquared(world.shipPos);
 
     // Tractor pull when the ship is close — feels great to scoop
-    if (distSq < MAGNET_RADIUS * MAGNET_RADIUS) {
+    if (data.pos.distanceToSquared(world.shipPos) < MAGNET_RADIUS * MAGNET_RADIUS) {
       data.pos.lerp(world.shipPos, Math.min(1, 4.5 * delta));
     }
 
     g.position.set(data.pos.x, data.pos.y + Math.sin(t * 2.4) * 0.3, data.pos.z);
     g.rotation.y = t * 1.8;
 
-    if (distSq < COLLECT_RADIUS * COLLECT_RADIUS) {
+    // Check collection after lerp so the pulled position is used
+    if (data.pos.distanceToSquared(world.shipPos) < COLLECT_RADIUS * COLLECT_RADIUS) {
       game.collectCrystal(data.id);
       sfx.pickup();
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useGame } from '@/lib/store';
 import { world, input } from '@/lib/world';
 import { initAudio, sfx } from '@/lib/audio';
@@ -644,8 +645,8 @@ function Menu() {
           <span><span className="text-cyan-400/80">BOOST</span>&nbsp;&nbsp;AFTERBURNER</span>
         </div>
 
-        {/* Social links */}
-        <div className="mt-8 flex items-center gap-4">
+        {/* Social + docs links */}
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <a
             href="https://t.me/+6m_1n4OJlXtmMDNk"
             target="_blank"
@@ -668,6 +669,12 @@ function Menu() {
             </svg>
             FOLLOW ON X
           </a>
+          <Link
+            href="/docs"
+            className="clip-corners flex items-center gap-2 border border-cyan-400/30 bg-slate-950/50 px-4 py-2 text-[10px] tracking-[0.3em] text-cyan-300/80 backdrop-blur-sm transition-all hover:border-cyan-300 hover:text-cyan-200"
+          >
+            FIELD MANUAL
+          </Link>
         </div>
       </div>
     </div>
