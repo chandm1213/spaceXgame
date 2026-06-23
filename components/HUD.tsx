@@ -7,6 +7,9 @@ import { world, input } from '@/lib/world';
 import { initAudio, sfx } from '@/lib/audio';
 import { music } from '@/lib/music';
 import { SKINS, WEAPONS, MISSIONS } from '@/lib/loadout';
+import { Leaderboard, WalletBadge } from '@/components/Leaderboard';
+import { useWallet } from '@/lib/wallet';
+import { PREMIUM_PRICE } from '@/lib/payment';
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(false);
@@ -99,7 +102,7 @@ function Radar() {
         ctx.fill();
       }
 
-      const { aliens, crystals, asteroids } = useGame.getState();
+      const { aliens, crystals, asteroids, wormhole } = useGame.getState();
       const pulse = 0.65 + 0.35 * Math.sin(now / 120);
 
       // Contacts — rotated so "up" is the ship's heading
@@ -148,6 +151,36 @@ function Radar() {
       }
       ctx.globalAlpha = 1;
 
+      // Wormhole — pulsing ring, clamped to the rim with a chevron when out of range
+      if (wormhole) {
+        const dx = wormhole.x - world.shipPos.x;
+        const dz = wormhole.z - world.shipPos.z;
+        const h = world.shipHeading;
+        const right = -dx * Math.cos(h) + dz * Math.sin(h);
+        const forward = dx * Math.sin(h) + dz * Math.cos(h);
+        const dist = Math.hypot(right, forward);
+        const scale = (C - 8) / RADAR_RANGE;
+        const off = dist > RADAR_RANGE;
+        const px = off ? C + (right / dist) * (C - 8) : C + right * scale;
+        const py = off ? C - (forward / dist) * (C - 8) : C - forward * scale;
+        ctx.save();
+        ctx.strokeStyle = '#c084fc';
+        ctx.fillStyle = '#c084fc';
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 12;
+        ctx.lineWidth = 2;
+        const rr = 4.5 + Math.sin(now / 140) * 1.8;
+        ctx.beginPath();
+        ctx.arc(px, py, rr, 0, Math.PI * 2);
+        ctx.stroke();
+        if (off) {
+          ctx.beginPath();
+          ctx.arc(px, py, 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
       // Ship marker
       ctx.fillStyle = '#e0f2fe';
       ctx.beginPath();
@@ -186,6 +219,57 @@ function DamageFlash() {
       className="pointer-events-none absolute inset-0 z-30"
       style={{ background: 'radial-gradient(ellipse at center, transparent 40%, rgba(220,38,38,0.45) 100%)' }}
     />
+  );
+}
+
+function WarpFlash() {
+  const warpFlash = useGame((s) => s.warpFlash);
+  const zone = useGame((s) => s.zone);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!warpFlash) return;
+    setVisible(true);
+    const t = setTimeout(() => setVisible(false), 1400);
+    return () => clearTimeout(t);
+  }, [warpFlash]);
+  if (!visible) return null;
+  return (
+    <div className="pointer-events-none absolute inset-0 z-40">
+      <div
+        className="absolute inset-0 animate-pulseGlow"
+        style={{
+          background:
+            'radial-gradient(circle at center, rgba(168,85,247,0.55), rgba(34,211,238,0.3) 45%, transparent 78%)',
+        }}
+      />
+      <div className="absolute left-1/2 top-1/3 -translate-x-1/2 text-center">
+        <div className="text-[10px] tracking-[0.5em] text-fuchsia-300/80">WORMHOLE TRAVERSED</div>
+        <div
+          className="text-glow-cyan mt-1 text-4xl font-black tracking-[0.3em] text-fuchsia-100 md:text-5xl"
+          style={{ fontFamily: 'Orbitron, sans-serif' }}
+        >
+          ZONE {String(zone).padStart(2, '0')}
+        </div>
+        <div className="mt-1 text-[11px] tracking-[0.3em] text-cyan-200/80">+2000 PTS · LIFE SUPPORT RESTORED</div>
+      </div>
+    </div>
+  );
+}
+
+function WormholePrompt() {
+  const wormhole = useGame((s) => s.wormhole);
+  if (!wormhole) return null;
+  return (
+    <div className="pointer-events-none absolute bottom-24 left-1/2 z-30 -translate-x-1/2 text-center md:bottom-28">
+      <div className="clip-corners border border-fuchsia-400/50 bg-fuchsia-950/30 px-5 py-2 backdrop-blur-sm animate-pulseGlow">
+        <div className="text-[10px] tracking-[0.4em] text-fuchsia-300" style={{ fontFamily: 'Orbitron, sans-serif' }}>
+          ⊘ WORMHOLE DETECTED
+        </div>
+        <div className="mt-0.5 text-[9px] tracking-[0.3em] text-fuchsia-200/70">
+          FLY IN TO ESCAPE — TRACK IT ON RADAR
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -473,63 +557,146 @@ function MobileControls() {
   );
 }
 
+function PremiumUnlock({ onUnlocked }: { onUnlocked?: () => void }) {
+  const { enabled, connected, premium, premiumLoading, buyPremium, login } = useWallet();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  if (!enabled) return null;
+
+  if (premium) {
+    return (
+      <div className="mt-6 text-center text-[11px] tracking-[0.35em] text-amber-300">
+        ★ PREMIUM UNLOCKED ★
+      </div>
+    );
+  }
+
+  const handleBuy = async () => {
+    setBusy(true);
+    setMsg('Confirm the payment in your wallet…');
+    const res = await buyPremium();
+    setBusy(false);
+    if (res.ok) {
+      setMsg(null);
+      onUnlocked?.();
+    } else {
+      setMsg(res.error || 'Purchase failed');
+    }
+  };
+
+  return (
+    <div className="clip-corners mt-6 flex flex-col items-center gap-2 border border-fuchsia-400/30 bg-fuchsia-950/20 px-6 py-4">
+      <div className="text-[10px] tracking-[0.4em] text-fuchsia-300/80">PREMIUM ARSENAL</div>
+      <div className="text-[11px] text-slate-400">
+        Unlock all locked hulls &amp; weapons for{' '}
+        <span className="text-amber-200">{PREMIUM_PRICE.toLocaleString()} $SPACEX</span>
+      </div>
+      {!connected ? (
+        <button
+          onClick={login}
+          className="clip-corners mt-1 border border-fuchsia-400/60 bg-fuchsia-500/15 px-6 py-2 text-[11px] tracking-[0.3em] text-fuchsia-100 transition-all hover:bg-fuchsia-500/30"
+          style={{ fontFamily: 'Orbitron, sans-serif' }}
+        >
+          CONNECT WALLET
+        </button>
+      ) : (
+        <button
+          onClick={handleBuy}
+          disabled={busy || premiumLoading}
+          className="clip-corners mt-1 border border-amber-400/60 bg-amber-500/15 px-6 py-2 text-[11px] tracking-[0.3em] text-amber-100 transition-all hover:bg-amber-500/30 disabled:opacity-50"
+          style={{ fontFamily: 'Orbitron, sans-serif' }}
+        >
+          {busy ? 'PROCESSING…' : `UNLOCK PREMIUM`}
+        </button>
+      )}
+      {msg && <div className="mt-1 max-w-xs text-center text-[10px] text-fuchsia-200/80">{msg}</div>}
+    </div>
+  );
+}
+
 function LoadoutPicker() {
   const skinId = useGame((s) => s.skinId);
   const weaponId = useGame((s) => s.weaponId);
   const setSkin = useGame((s) => s.setSkin);
   const setWeapon = useGame((s) => s.setWeapon);
+  const { premium } = useWallet();
+
+  const skinLocked = (s: (typeof SKINS)[number]) => !!s.premium && !premium;
+  const weaponLocked = (w: (typeof WEAPONS)[number]) => !!w.premium && !premium;
 
   return (
-    <div className="mt-9 flex flex-col gap-5 md:flex-row md:gap-12">
-      {/* Hull skins */}
-      <div>
-        <div className="mb-2 text-[10px] tracking-[0.4em] text-cyan-400/70">HULL FINISH</div>
-        <div className="flex gap-2">
-          {SKINS.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setSkin(s.id)}
-              title={`${s.name} — ${s.tag}`}
-              className={`group relative h-12 w-12 rounded-sm border transition-all ${
-                skinId === s.id
-                  ? 'border-cyan-300 ring-2 ring-cyan-400/50'
-                  : 'border-slate-600 hover:border-slate-400'
-              }`}
-              style={{ background: `linear-gradient(135deg, ${s.hull} 55%, ${s.accent} 55%)` }}
-            >
-              {skinId === s.id && (
-                <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] tracking-[0.2em] text-cyan-300">
-                  {s.name}
-                </span>
-              )}
-            </button>
-          ))}
+    <div className="mt-9 flex flex-col items-center gap-5">
+      <div className="flex flex-col gap-5 md:flex-row md:gap-12">
+        {/* Hull skins */}
+        <div>
+          <div className="mb-2 text-[10px] tracking-[0.4em] text-cyan-400/70">HULL FINISH</div>
+          <div className="flex gap-2">
+            {SKINS.map((s) => {
+              const locked = skinLocked(s);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => !locked && setSkin(s.id)}
+                  title={locked ? `${s.name} — PREMIUM (locked)` : `${s.name} — ${s.tag}`}
+                  className={`group relative h-12 w-12 rounded-sm border transition-all ${
+                    skinId === s.id
+                      ? 'border-cyan-300 ring-2 ring-cyan-400/50'
+                      : 'border-slate-600 hover:border-slate-400'
+                  } ${locked ? 'cursor-not-allowed' : ''}`}
+                  style={{ background: `linear-gradient(135deg, ${s.hull} 55%, ${s.accent} 55%)` }}
+                >
+                  {locked && (
+                    <span className="absolute inset-0 flex items-center justify-center rounded-sm bg-black/55 text-xs">
+                      🔒
+                    </span>
+                  )}
+                  {s.premium && !locked && (
+                    <span className="absolute -right-1 -top-1 text-[9px]">★</span>
+                  )}
+                  {skinId === s.id && (
+                    <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[8px] tracking-[0.2em] text-cyan-300">
+                      {s.name}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Weapons */}
+        <div>
+          <div className="mb-2 text-[10px] tracking-[0.4em] text-cyan-400/70">PRIMARY WEAPON</div>
+          <div className="flex flex-wrap gap-2">
+            {WEAPONS.map((w) => {
+              const locked = weaponLocked(w);
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => !locked && setWeapon(w.id)}
+                  className={`clip-corners relative border px-3 py-2.5 text-left transition-all ${
+                    weaponId === w.id
+                      ? 'border-cyan-300 bg-cyan-400/15'
+                      : 'border-slate-600 hover:border-slate-400'
+                  } ${locked ? 'cursor-not-allowed opacity-80' : ''}`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ background: w.color, boxShadow: `0 0 6px ${w.color}` }} />
+                    <span className="text-[11px] tracking-[0.2em] text-slate-200">{w.name}</span>
+                    {w.premium && <span className="text-[9px] text-amber-300">{locked ? '🔒' : '★'}</span>}
+                  </div>
+                  <div className="text-[8px] tracking-widest text-slate-500">
+                    {locked ? 'PREMIUM' : w.tag}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Weapons */}
-      <div>
-        <div className="mb-2 text-[10px] tracking-[0.4em] text-cyan-400/70">PRIMARY WEAPON</div>
-        <div className="flex flex-wrap gap-2">
-          {WEAPONS.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => setWeapon(w.id)}
-              className={`clip-corners border px-3 py-2.5 text-left transition-all ${
-                weaponId === w.id
-                  ? 'border-cyan-300 bg-cyan-400/15'
-                  : 'border-slate-600 hover:border-slate-400'
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full" style={{ background: w.color, boxShadow: `0 0 6px ${w.color}` }} />
-                <span className="text-[11px] tracking-[0.2em] text-slate-200">{w.name}</span>
-              </div>
-              <div className="text-[8px] tracking-widest text-slate-500">{w.tag}</div>
-            </button>
-          ))}
-        </div>
-      </div>
+      <PremiumUnlock />
     </div>
   );
 }
@@ -589,6 +756,9 @@ function Menu() {
   return (
     <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[2px]">
       <div className="bg-grid absolute inset-0 opacity-40" />
+      <div className="absolute left-5 top-5 z-10">
+        <WalletBadge />
+      </div>
       <div className="absolute right-5 top-5">
         <MusicToggle />
       </div>
@@ -676,18 +846,25 @@ function Menu() {
             FIELD MANUAL
           </Link>
         </div>
+
+        <div className="mt-8">
+          <Leaderboard />
+        </div>
       </div>
     </div>
   );
 }
 
 function GameOver() {
-  const { score, fragments, kills, wave, bossKills, missionIndex, highScore, newRecord, start } = useGame();
+  const { score, fragments, kills, wave, zone, bossKills, missionIndex, highScore, newRecord, start } = useGame();
   useEffect(() => {
     sfx.gameover();
   }, []);
   return (
-    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center overflow-y-auto bg-black/80 py-10 backdrop-blur-sm">
+      <div className="absolute left-5 top-5 z-10">
+        <WalletBadge />
+      </div>
       <div className="absolute right-5 top-5">
         <MusicToggle />
       </div>
@@ -719,6 +896,8 @@ function GameOver() {
         <span className="text-right text-cyan-300">{Math.min(missionIndex, MISSIONS.length)} / {MISSIONS.length}</span>
         <span className="text-slate-400">WAVE REACHED</span>
         <span className="text-right text-cyan-300">{wave}</span>
+        <span className="text-slate-400">ZONE REACHED</span>
+        <span className="text-right text-fuchsia-300">{zone}</span>
       </div>
       <button
         onClick={() => {
@@ -757,6 +936,10 @@ function GameOver() {
           FOLLOW ON X
         </a>
       </div>
+
+      <div className="mt-6">
+        <Leaderboard submitScoreValue={score} />
+      </div>
     </div>
   );
 }
@@ -769,6 +952,7 @@ export default function HUD() {
   const fuel = useGame((s) => s.fuel);
   const oxygen = useGame((s) => s.oxygen);
   const shields = useGame((s) => s.shields);
+  const zone = useGame((s) => s.zone);
   const highScore = useGame((s) => s.highScore);
   const isMobile = useIsMobile();
 
@@ -802,6 +986,9 @@ export default function HUD() {
             <div className="text-[10px] tracking-widest text-slate-400 md:text-[11px]">
               WAVE <span className="text-amber-300">{String(wave).padStart(2, '0')}</span>
             </div>
+            <div className="text-[10px] tracking-widest text-slate-400 md:text-[11px]">
+              ZONE <span className="text-fuchsia-300">{String(zone).padStart(2, '0')}</span>
+            </div>
             <div className="mt-1 text-[10px] tracking-widest text-slate-400 md:text-[11px]">
               BEST <span className="text-amber-300/90">{String(highScore).padStart(6, '0')}</span>
             </div>
@@ -818,6 +1005,10 @@ export default function HUD() {
           {/* Top-center: mission objective */}
           <MissionTracker />
           <MissionBanner />
+
+          {/* Wormhole escape prompt + warp transition */}
+          <WormholePrompt />
+          <WarpFlash />
 
           {/* Bottom-center: weapon readout (desktop only) */}
           {!isMobile && <WeaponReadout />}

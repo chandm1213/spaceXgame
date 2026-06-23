@@ -85,6 +85,11 @@ interface GameState {
   missionIndex: number;
   missionFlash: number; // timestamp of last mission completion, drives HUD banner
 
+  // Wormhole / zone escalation
+  zone: number; // current zone — climbs each time you warp; enemies get tougher
+  wormhole: THREE.Vector3 | null; // open portal position, null when none present
+  warpFlash: number; // timestamp of last warp, drives HUD flash + zone banner
+
   aliens: AlienData[];
   bolts: BoltData[];
   crystals: CrystalData[];
@@ -109,6 +114,8 @@ interface GameState {
   damage: (amount: number) => void;
   drain: (fuelLoss: number, oxygenLoss: number) => void;
   setWave: (wave: number) => void;
+  openWormhole: (pos: THREE.Vector3) => void;
+  enterWormhole: () => void;
 }
 
 export const useGame = create<GameState>((set, get) => ({
@@ -132,6 +139,10 @@ export const useGame = create<GameState>((set, get) => ({
   missionIndex: 0,
   missionFlash: 0,
 
+  zone: 1,
+  wormhole: null,
+  warpFlash: 0,
+
   aliens: [],
   bolts: [],
   crystals: [],
@@ -153,6 +164,9 @@ export const useGame = create<GameState>((set, get) => ({
       newRecord: false,
       missionIndex: 0,
       missionFlash: 0,
+      zone: 1,
+      wormhole: null,
+      warpFlash: 0,
       aliens: [],
       bolts: [],
       crystals: [],
@@ -175,12 +189,16 @@ export const useGame = create<GameState>((set, get) => ({
   setWeapon: (id) => set({ weaponId: id }),
 
   spawnAlien: (pos, kind) =>
-    set((s) => ({
-      aliens: [
-        ...s.aliens,
-        { id: uid(), pos: pos.clone(), hp: ALIEN_HP[kind], maxHp: ALIEN_HP[kind], seed: Math.random() * 100, kind },
-      ],
-    })),
+    set((s) => {
+      // Deeper zones spawn tougher hostiles: +50% HP per zone past the first
+      const hp = Math.round(ALIEN_HP[kind] * (1 + (s.zone - 1) * 0.5));
+      return {
+        aliens: [
+          ...s.aliens,
+          { id: uid(), pos: pos.clone(), hp, maxHp: hp, seed: Math.random() * 100, kind },
+        ],
+      };
+    }),
 
   killAlien: (id, byCrash) => {
     const s = get();
@@ -312,6 +330,30 @@ export const useGame = create<GameState>((set, get) => ({
 
   setWave: (wave) => {
     set({ wave });
+    checkMission(get, set);
+  },
+
+  openWormhole: (pos) => set({ wormhole: pos.clone() }),
+
+  enterWormhole: () => {
+    const s = get();
+    if (!s.wormhole) return;
+    // Reward for surviving: warp to a tougher zone, top off life support, clear the field
+    set({
+      zone: s.zone + 1,
+      wormhole: null,
+      warpFlash: performance.now(),
+      score: s.score + 2000,
+      shields: Math.min(100, s.shields + 40),
+      fuel: 100,
+      oxygen: 100,
+      wave: s.wave + 2,
+      aliens: [],
+      asteroids: [],
+      bolts: [],
+      crystals: [],
+      booms: [],
+    });
     checkMission(get, set);
   },
 }));

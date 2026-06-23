@@ -4,7 +4,7 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGame } from '@/lib/store';
-import { world } from '@/lib/world';
+import { world, WORLD_RADIUS } from '@/lib/world';
 import { sfx } from '@/lib/audio';
 
 const spawnPos = new THREE.Vector3();
@@ -12,6 +12,10 @@ const rockPos = new THREE.Vector3();
 const rockVel = new THREE.Vector3();
 const camTarget = new THREE.Vector3();
 const lookTarget = new THREE.Vector3();
+const holePos = new THREE.Vector3();
+
+// Seconds you must survive in a zone before an escape wormhole tears open
+const WORMHOLE_DELAY = 60;
 
 /** Wave director: keeps alien pressure rising over time. */
 export function Director() {
@@ -19,6 +23,8 @@ export function Director() {
   const spawnTimer = useRef(0);
   const rockTimer = useRef(0);
   const lastBossWave = useRef(0);
+  const zoneTimer = useRef(0);
+  const lastZone = useRef(1);
 
   useFrame((_, rawDelta) => {
     const delta = Math.min(rawDelta, 0.05);
@@ -30,6 +36,28 @@ export function Director() {
     if (waveTimer.current > 28) {
       waveTimer.current = 0;
       game.setWave(game.wave + 1);
+    }
+
+    // --- Escape wormhole: survive long enough and a portal opens ---
+    if (game.zone !== lastZone.current) {
+      // Just warped into a new zone — restart the survival clock
+      lastZone.current = game.zone;
+      zoneTimer.current = 0;
+    }
+    if (!game.wormhole) {
+      zoneTimer.current += delta;
+      if (zoneTimer.current > WORMHOLE_DELAY) {
+        // Open it out in the dark so the pilot has to run for it
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 70;
+        holePos.set(
+          THREE.MathUtils.clamp(world.shipPos.x + Math.cos(angle) * radius, -WORLD_RADIUS + 12, WORLD_RADIUS - 12),
+          3,
+          THREE.MathUtils.clamp(world.shipPos.z + Math.sin(angle) * radius, -WORLD_RADIUS + 12, WORLD_RADIUS - 12)
+        );
+        game.openWormhole(holePos);
+        sfx.portal();
+      }
     }
 
     // Behemoth boss every third wave — one at a time
@@ -53,7 +81,9 @@ export function Director() {
     // Keep the dark populated
     spawnTimer.current -= delta;
     const grunts = game.aliens.filter((a) => a.kind !== 2).length;
-    const targetCount = Math.min(3 + game.wave * 2, 15);
+    // Deeper zones field more hostiles at once and lift the cap
+    const zoneBoost = (game.zone - 1) * 2;
+    const targetCount = Math.min(3 + game.wave * 2 + zoneBoost, 15 + (game.zone - 1) * 4);
     if (spawnTimer.current <= 0 && grunts < targetCount) {
       spawnTimer.current = Math.max(0.8, 3.2 - game.wave * 0.25);
       // Spawn just beyond the headlight's reach, biased ahead of the ship

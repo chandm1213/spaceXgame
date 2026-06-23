@@ -13,6 +13,7 @@ import Asteroids from './Asteroids';
 import Bolts from './Bolts';
 import Crystals from './Crystals';
 import Explosions from './Explosions';
+import Wormhole from './Wormhole';
 import { Director, CameraRig } from './Systems';
 import HUD from './HUD';
 
@@ -72,6 +73,7 @@ export default function Game() {
             <Bolts />
             <Crystals />
             <Explosions />
+            <Wormhole />
             <Director />
           </>
         )}

@@ -90,4 +90,16 @@ export const sfx = {
     tone('sawtooth', 220, 40, 1.4, 0.25);
     noiseBurst(1.2, 0.2, 400);
   },
+  portal: () => {
+    // Eerie rising hum — a wormhole tearing open
+    tone('sine', 110, 440, 1.2, 0.18);
+    tone('triangle', 220, 880, 1.2, 0.12);
+    noiseBurst(0.8, 0.1, 800);
+  },
+  warp: () => {
+    // Whoosh through the portal
+    tone('sawtooth', 180, 1400, 0.7, 0.22);
+    tone('sine', 90, 700, 0.7, 0.2);
+    noiseBurst(0.7, 0.2, 1200);
+  },
 };

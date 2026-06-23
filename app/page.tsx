@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import Providers from '@/components/Providers';
 
 const Game = dynamic(() => import('@/components/Game'), {
   ssr: false,
@@ -18,5 +19,9 @@ const Game = dynamic(() => import('@/components/Game'), {
 });
 
 export default function Home() {
-  return <Game />;
+  return (
+    <Providers>
+      <Game />
+    </Providers>
+  );
 }
