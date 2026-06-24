@@ -2,16 +2,14 @@
 // Entry fees are paid in $SPACEX to the escrow wallet and verified on-chain
 // (same pattern as premium). Payouts to the winner are MANUAL — see /api/tournament/admin.
 
-import { PREMIUM_RECEIVER } from './payment';
 import type { RunBreakdown } from './scoring';
 
-// Wallet that collects entry fees. Default to the premium receiver so it works
-// out of the box, but a DEDICATED wallet is recommended for clean payout accounting.
+// Dedicated wallet that collects tournament entry fees (the prize escrow).
 export const TOURNAMENT_ESCROW =
-  process.env.NEXT_PUBLIC_TOURNAMENT_ESCROW || PREMIUM_RECEIVER;
+  process.env.NEXT_PUBLIC_TOURNAMENT_ESCROW || 'FcYXNzAJCsEtH86ehP1QrUaRWqUc9iDomFB8DkX3bta2';
 
 // Entry fee in whole $SPACEX tokens.
-export const TOURNAMENT_FEE = Number(process.env.NEXT_PUBLIC_TOURNAMENT_FEE || '25000');
+export const TOURNAMENT_FEE = Number(process.env.NEXT_PUBLIC_TOURNAMENT_FEE || '200000');
 
 // House rake in basis points (1000 = 10%). The winner takes pot * (1 - rake).
 export const TOURNAMENT_RAKE_BPS = Number(process.env.TOURNAMENT_RAKE_BPS || '1000');
