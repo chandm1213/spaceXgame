@@ -23,3 +23,15 @@ export const LB_NAMES = 'sbh:names';
 export const PREMIUM_SET = 'sbh:premium';
 // Hash of used payment signatures -> wallet (replay protection).
 export const PREMIUM_SIGS = 'sbh:premium:sigs';
+
+// --- Tournament keys (per tournament window id) ---
+// Set of wallets that paid the entry fee for this tournament.
+export const tnyEntries = (id: number) => `sbh:tny:${id}:entries`;
+// Sorted set of validated best scores (member = wallet, score = best).
+export const tnyBoard = (id: number) => `sbh:tny:${id}:board`;
+// Running total of entry fees collected (whole $SPACEX), drives the pot.
+export const tnyPot = (id: number) => `sbh:tny:${id}:pot`;
+// Flag/record that the winner has been paid out (manual payout).
+export const tnyPaid = (id: number) => `sbh:tny:${id}:paid`;
+// Hash of used entry-payment signatures -> wallet (replay protection, global).
+export const TNY_SIGS = 'sbh:tny:sigs';

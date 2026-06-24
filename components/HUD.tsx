@@ -8,6 +8,7 @@ import { initAudio, sfx } from '@/lib/audio';
 import { music } from '@/lib/music';
 import { SKINS, WEAPONS, MISSIONS } from '@/lib/loadout';
 import { Leaderboard, WalletBadge } from '@/components/Leaderboard';
+import { TournamentPanel, TournamentResult } from '@/components/Tournament';
 import { useWallet } from '@/lib/wallet';
 import { PREMIUM_PRICE } from '@/lib/payment';
 
@@ -840,7 +841,7 @@ function Menu() {
   const start = useGame((s) => s.start);
   const highScore = useGame((s) => s.highScore);
   return (
-    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/70 backdrop-blur-[2px]">
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center overflow-y-auto bg-black/70 py-10 backdrop-blur-[2px]">
       <div className="bg-grid absolute inset-0 opacity-40" />
       <div className="absolute left-5 top-5 z-10">
         <WalletBadge />
@@ -886,6 +887,12 @@ function Menu() {
         >
           LAUNCH MISSION
         </button>
+
+        {/* Play-to-earn weekly tournament */}
+        <div className="mt-9 w-full max-w-md">
+          <TournamentPanel />
+        </div>
+
         {/* Desktop controls */}
         <div className="mt-10 hidden grid-cols-2 gap-x-10 gap-y-1.5 text-[11px] tracking-widest text-slate-500 md:grid">
           <span className="text-right text-cyan-400/80">W A S D</span><span>THRUSTERS</span>
@@ -997,6 +1004,9 @@ function GameOver() {
       >
         RELAUNCH
       </button>
+
+      {/* Tournament run submission */}
+      <TournamentResult />
 
       {/* Social links */}
       <div className="mt-6 flex items-center gap-4">

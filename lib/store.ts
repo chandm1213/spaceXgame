@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as THREE from 'three';
 import { uid } from './world';
 import { MISSIONS } from './loadout';
+import type { RunBreakdown } from './scoring';
 
 export type GameStatus = 'menu' | 'playing' | 'gameover';
 
@@ -76,6 +77,16 @@ interface GameState {
   bossKills: number;
   hitFlash: number; // timestamp of last shield hit, drives red flash in HUD
 
+  // Verified-run telemetry — per-kind tallies the server recomputes score from
+  killStalker: number;
+  killDrone: number;
+  killBehemoth: number;
+  killMother: number;
+  rockSmall: number;
+  rockBig: number;
+  warps: number;
+  runStartMs: number; // wall-clock start of the current run
+
   // Persistent best score + whether the last run beat it
   highScore: number;
   newRecord: boolean;
@@ -107,6 +118,7 @@ interface GameState {
 
   start: () => void;
   gameOver: () => void;
+  getRunBreakdown: () => RunBreakdown;
 
   setSkin: (id: number) => void;
   setWeapon: (id: number) => void;
@@ -141,6 +153,15 @@ export const useGame = create<GameState>((set, get) => ({
   kills: 0,
   bossKills: 0,
   hitFlash: 0,
+
+  killStalker: 0,
+  killDrone: 0,
+  killBehemoth: 0,
+  killMother: 0,
+  rockSmall: 0,
+  rockBig: 0,
+  warps: 0,
+  runStartMs: 0,
 
   highScore: loadHighScore(),
   newRecord: false,
@@ -177,6 +198,14 @@ export const useGame = create<GameState>((set, get) => ({
       kills: 0,
       bossKills: 0,
       hitFlash: 0,
+      killStalker: 0,
+      killDrone: 0,
+      killBehemoth: 0,
+      killMother: 0,
+      rockSmall: 0,
+      rockBig: 0,
+      warps: 0,
+      runStartMs: Date.now(),
       overdrive: 0,
       overdriveActive: false,
       overdriveFlash: 0,
@@ -204,6 +233,25 @@ export const useGame = create<GameState>((set, get) => ({
     set({ status: 'gameover', highScore, newRecord });
   },
 
+  getRunBreakdown: () => {
+    const s = get();
+    return {
+      killStalker: s.killStalker,
+      killDrone: s.killDrone,
+      killBehemoth: s.killBehemoth,
+      killMother: s.killMother,
+      rockSmall: s.rockSmall,
+      rockBig: s.rockBig,
+      fragments: s.fragments,
+      warps: s.warps,
+      missionIndex: s.missionIndex,
+      score: s.score,
+      wave: s.wave,
+      kills: s.kills,
+      durationSec: Math.max(0, (Date.now() - s.runStartMs) / 1000),
+    };
+  },
+
   setSkin: (id) => set({ skinId: id }),
   setWeapon: (id) => set({ weaponId: id }),
 
@@ -215,12 +263,17 @@ export const useGame = create<GameState>((set, get) => ({
     let score = s.score;
     let kills = s.kills;
     let bossKills = s.bossKills;
+    let kStalker = 0, kDrone = 0, kBehemoth = 0, kMother = 0, rSmall = 0, rBig = 0;
     const booms: BoomData[] = [...s.booms];
     for (const a of s.aliens) {
       const isApex = a.kind === 2 || a.kind === 3;
       score += a.kind === 3 ? 2500 : a.kind === 2 ? 750 : 100;
       kills += 1;
       if (isApex) bossKills += 1;
+      if (a.kind === 0) kStalker += 1;
+      else if (a.kind === 1) kDrone += 1;
+      else if (a.kind === 2) kBehemoth += 1;
+      else kMother += 1;
       booms.push({
         id: uid(),
         pos: a.pos.clone(),
@@ -234,6 +287,7 @@ export const useGame = create<GameState>((set, get) => ({
     }
     for (const r of s.asteroids) {
       score += r.big ? 120 : 40;
+      if (r.big) rBig += 1; else rSmall += 1;
       booms.push({ id: uid(), pos: r.pos.clone(), color: '#fbbf24', big: r.big });
     }
     set({
@@ -243,6 +297,12 @@ export const useGame = create<GameState>((set, get) => ({
       score,
       kills,
       bossKills,
+      killStalker: s.killStalker + kStalker,
+      killDrone: s.killDrone + kDrone,
+      killBehemoth: s.killBehemoth + kBehemoth,
+      killMother: s.killMother + kMother,
+      rockSmall: s.rockSmall + rSmall,
+      rockBig: s.rockBig + rBig,
       overdrive: 0,
       overdriveActive: true,
       overdriveFlash: performance.now(),
@@ -305,6 +365,10 @@ export const useGame = create<GameState>((set, get) => ({
       score: byCrash ? s.score : s.score + gained,
       kills: byCrash ? s.kills : s.kills + 1,
       bossKills: byCrash || !isApex ? s.bossKills : s.bossKills + 1,
+      killStalker: s.killStalker + (!byCrash && alien.kind === 0 ? 1 : 0),
+      killDrone: s.killDrone + (!byCrash && alien.kind === 1 ? 1 : 0),
+      killBehemoth: s.killBehemoth + (!byCrash && alien.kind === 2 ? 1 : 0),
+      killMother: s.killMother + (!byCrash && alien.kind === 3 ? 1 : 0),
       overdrive,
     });
     if (!byCrash) checkMission(get, set);
@@ -377,6 +441,8 @@ export const useGame = create<GameState>((set, get) => ({
         { id: uid(), pos: rock.pos.clone(), color: '#fbbf24', big: rock.big },
       ],
       score: byCrash ? s.score : s.score + (rock.big ? 120 : 40),
+      rockSmall: s.rockSmall + (!byCrash && !rock.big ? 1 : 0),
+      rockBig: s.rockBig + (!byCrash && rock.big ? 1 : 0),
       overdrive: byCrash ? s.overdrive : Math.min(100, s.overdrive + (rock.big ? 4 : 2)),
     });
   },
@@ -418,6 +484,7 @@ export const useGame = create<GameState>((set, get) => ({
       shields: Math.min(100, s.shields + 40),
       fuel: 100,
       oxygen: 100,
+      warps: s.warps + 1,
       wave: s.wave + 2,
       aliens: [],
       asteroids: [],
