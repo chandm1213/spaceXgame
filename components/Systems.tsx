@@ -23,6 +23,7 @@ export function Director() {
   const spawnTimer = useRef(0);
   const rockTimer = useRef(0);
   const lastBossWave = useRef(0);
+  const lastMotherWave = useRef(0);
   const zoneTimer = useRef(0);
   const lastZone = useRef(1);
 
@@ -60,10 +61,29 @@ export function Director() {
       }
     }
 
-    // Behemoth boss every third wave — one at a time
+    // Mothership: a colossal carrier every fifth wave — takes the slot
+    if (
+      game.wave >= 5 &&
+      game.wave % 5 === 0 &&
+      lastMotherWave.current !== game.wave &&
+      !game.aliens.some((a) => a.kind === 3)
+    ) {
+      lastMotherWave.current = game.wave;
+      const angle = Math.random() * Math.PI * 2;
+      spawnPos.set(
+        world.shipPos.x + Math.cos(angle) * 75,
+        6.0,
+        world.shipPos.z + Math.sin(angle) * 75
+      );
+      game.spawnAlien(spawnPos, 3);
+      sfx.mothership();
+    }
+
+    // Behemoth boss every third wave (but a Mothership wave takes priority) — one at a time
     if (
       game.wave >= 3 &&
       game.wave % 3 === 0 &&
+      game.wave % 5 !== 0 &&
       lastBossWave.current !== game.wave &&
       !game.aliens.some((a) => a.kind === 2)
     ) {
@@ -80,7 +100,7 @@ export function Director() {
 
     // Keep the dark populated
     spawnTimer.current -= delta;
-    const grunts = game.aliens.filter((a) => a.kind !== 2).length;
+    const grunts = game.aliens.filter((a) => a.kind !== 2 && a.kind !== 3).length;
     // Deeper zones field more hostiles at once and lift the cap
     const zoneBoost = (game.zone - 1) * 2;
     const targetCount = Math.min(3 + game.wave * 2 + zoneBoost, 15 + (game.zone - 1) * 4);

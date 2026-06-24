@@ -102,4 +102,19 @@ export const sfx = {
     tone('sine', 90, 700, 0.7, 0.2);
     noiseBurst(0.7, 0.2, 1200);
   },
+  mothership: () => {
+    // Vast, dread, descending horn — bigger than a Behemoth
+    tone('sawtooth', 52, 28, 2.4, 0.4);
+    tone('square', 78, 42, 2.0, 0.18);
+    noiseBurst(1.8, 0.22, 220);
+  },
+  overdrive: () => {
+    // Charging whine snapping into a cataclysmic shockwave
+    tone('sine', 220, 2200, 0.35, 0.22);
+    setTimeout(() => {
+      tone('sawtooth', 1400, 40, 0.9, 0.34);
+      tone('sine', 320, 30, 1.1, 0.3);
+      noiseBurst(0.9, 0.4, 1600);
+    }, 120);
+  },
 };

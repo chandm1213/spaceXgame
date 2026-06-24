@@ -8,11 +8,13 @@ import { world } from '@/lib/world';
 import { sfx } from '@/lib/audio';
 
 const seekDir = new THREE.Vector3();
+const dronePos = new THREE.Vector3();
 
 const PALETTE: Record<number, { body: string; glow: string }> = {
   0: { body: '#3b0764', glow: '#c084fc' }, // Stalker
   1: { body: '#052e16', glow: '#4ade80' }, // Drone
   2: { body: '#450a0a', glow: '#fb7185' }, // Behemoth
+  3: { body: '#1a0726', glow: '#e879f9' }, // Mothership
 };
 
 function Alien({ data }: { data: AlienData }) {
@@ -20,8 +22,12 @@ function Alien({ data }: { data: AlienData }) {
   const inner = useRef<THREE.Group>(null);
   const ring = useRef<THREE.Mesh>(null);
   const healthBar = useRef<THREE.Mesh>(null);
+  const droneTimer = useRef(5);
+  const coreLight = useRef<THREE.PointLight>(null);
 
   const isBoss = data.kind === 2;
+  const isMother = data.kind === 3;
+  const hasBar = isBoss || isMother;
   const bodyScale = isBoss ? 3.0 : 1;
 
   useFrame((state, rawDelta) => {
@@ -31,29 +37,63 @@ function Alien({ data }: { data: AlienData }) {
     const game = useGame.getState();
     if (game.status !== 'playing') return;
 
+    // Hostiles crawl during an OVERDRIVE supernova; the pilot stays at full speed
+    const tDelta = delta * world.timeScale;
     const t = state.clock.elapsedTime + data.seed;
+
+    // The Mothership enrages once it drops below half health
+    const enraged = isMother && data.hp < data.maxHp * 0.5;
 
     // Seek the ship through the dark
     seekDir.copy(world.shipPos).sub(data.pos);
     seekDir.y = 0;
     const distance = seekDir.length();
-    const speed = isBoss
+    const speed = isMother
+      ? (enraged ? 2.6 : 1.5) + game.wave * 0.05
+      : isBoss
       ? Math.min(2.0 + game.wave * 0.12, 3.6)
       : Math.min(2.2 + game.wave * 0.35 + (data.kind === 1 ? 1.2 : 0), 7);
     if (distance > 0.001) {
       seekDir.normalize();
       // Weave sideways like a predator circling prey
-      const weave = Math.sin(t * 1.7) * (isBoss ? 0.25 : 0.55);
-      data.pos.x += (seekDir.x + seekDir.z * weave) * speed * delta;
-      data.pos.z += (seekDir.z - seekDir.x * weave) * speed * delta;
+      const weave = Math.sin(t * 1.7) * (hasBar ? 0.2 : 0.55);
+      data.pos.x += (seekDir.x + seekDir.z * weave) * speed * tDelta;
+      data.pos.z += (seekDir.z - seekDir.x * weave) * speed * tDelta;
     }
-    data.pos.y = 2.4 + Math.sin(t * 2.1) * (isBoss ? 1.4 : 0.8);
+    data.pos.y = (isMother ? 6.0 : 2.4) + Math.sin(t * (isMother ? 1.3 : 2.1)) * (hasBar ? 1.0 : 0.8);
 
     g.position.copy(data.pos);
-    g.rotation.y = Math.atan2(seekDir.x, seekDir.z);
+    g.rotation.y = isMother ? t * (enraged ? 0.9 : 0.45) : Math.atan2(seekDir.x, seekDir.z);
+
+    // --- Mothership launches drone swarms ---
+    if (isMother) {
+      droneTimer.current -= tDelta;
+      if (droneTimer.current <= 0) {
+        droneTimer.current = enraged ? 3.2 : 5.5;
+        const grunts = game.aliens.filter((a) => a.kind !== 2 && a.kind !== 3).length;
+        if (grunts < 14) {
+          const launch = enraged ? 3 : 2;
+          for (let i = 0; i < launch; i++) {
+            const a = Math.random() * Math.PI * 2;
+            dronePos.set(
+              data.pos.x + Math.cos(a) * 6,
+              2.4,
+              data.pos.z + Math.sin(a) * 6
+            );
+            game.spawnAlien(dronePos, 1);
+          }
+          sfx.swap();
+        }
+      }
+      if (coreLight.current) {
+        const pulse = 0.7 + Math.sin(t * (enraged ? 9 : 4)) * 0.3;
+        coreLight.current.intensity = (enraged ? 220 : 140) * pulse;
+        coreLight.current.color.set(enraged ? '#fb3b6b' : '#e879f9');
+      }
+    }
 
     // Idle animation: breathing body, spinning ring, swaying tentacles
-    if (inner.current) {
+    if (inner.current && !isMother) {
       const breathe = 1 + Math.sin(t * 3.2) * 0.07;
       inner.current.scale.setScalar(breathe);
       inner.current.children.forEach((child, i) => {
@@ -62,24 +102,88 @@ function Alien({ data }: { data: AlienData }) {
         }
       });
     }
-    if (ring.current) ring.current.rotation.z = t * 2.4;
+    if (ring.current && !isMother) ring.current.rotation.z = t * 2.4;
 
-    // Boss health bar tracks damage and faces the camera
+    // Boss / Mothership health bar tracks damage and faces the camera
     if (healthBar.current) {
       healthBar.current.scale.x = Math.max(0.001, data.hp / data.maxHp);
       healthBar.current.parent!.quaternion.copy(state.camera.quaternion);
     }
 
-    // Crashing into the ship: shield damage, alien dies
-    const crashDist = isBoss ? 5.0 : 2.3;
+    // Crashing into the ship: shield damage, hostile dies
+    const crashDist = isMother ? 7.0 : isBoss ? 5.0 : 2.3;
     if (distance < crashDist) {
       game.killAlien(data.id, true);
-      game.damage(data.kind === 2 ? 38 : data.kind === 0 ? 20 : 14);
+      game.damage(isMother ? 46 : data.kind === 2 ? 38 : data.kind === 0 ? 20 : 14);
       sfx.hit();
     }
   });
 
   const { body: bodyColor, glow: glowColor } = PALETTE[data.kind];
+
+  // ===== Mothership — a vast self-lit war saucer =====
+  if (isMother) {
+    return (
+      <group ref={group} position={data.pos}>
+        <pointLight ref={coreLight} position={[0, -0.6, 0]} intensity={140} distance={60} color={glowColor} />
+        <group ref={inner}>
+          {/* Upper hull dome */}
+          <mesh castShadow position={[0, 0.5, 0]}>
+            <sphereGeometry args={[2.6, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2]} />
+            <meshStandardMaterial color={bodyColor} metalness={0.85} roughness={0.3} emissive={glowColor} emissiveIntensity={0.25} />
+          </mesh>
+          {/* Wide saucer rim */}
+          <mesh castShadow position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[5.2, 5.2, 0.9, 48]} />
+            <meshStandardMaterial color={bodyColor} metalness={0.9} roughness={0.35} emissive={glowColor} emissiveIntensity={0.2} />
+          </mesh>
+          {/* Tapered underbelly */}
+          <mesh castShadow position={[0, -0.9, 0]} rotation={[Math.PI, 0, 0]}>
+            <coneGeometry args={[4.2, 2.2, 48]} />
+            <meshStandardMaterial color="#0a0312" metalness={0.8} roughness={0.5} />
+          </mesh>
+          {/* Glowing reactor core under the hull */}
+          <mesh position={[0, -1.4, 0]}>
+            <sphereGeometry args={[1.0, 20, 20]} />
+            <meshStandardMaterial color={glowColor} emissive={glowColor} emissiveIntensity={6} toneMapped={false} />
+          </mesh>
+          {/* Rotating energy band around the rim */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[5.3, 0.16, 8, 64]} />
+            <meshStandardMaterial color={glowColor} emissive={glowColor} emissiveIntensity={3.5} toneMapped={false} />
+          </mesh>
+          {/* Turret pods + running lights around the rim */}
+          {Array.from({ length: 10 }).map((_, i) => {
+            const a = (i / 10) * Math.PI * 2;
+            return (
+              <group key={i} position={[Math.cos(a) * 4.7, 0.15, Math.sin(a) * 4.7]}>
+                <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.32, 0.42, 0.7, 10]} />
+                  <meshStandardMaterial color="#2a0b3a" metalness={0.9} roughness={0.3} />
+                </mesh>
+                <mesh position={[0, 0.45, 0]}>
+                  <sphereGeometry args={[0.18, 10, 10]} />
+                  <meshStandardMaterial color={glowColor} emissive={glowColor} emissiveIntensity={5} toneMapped={false} />
+                </mesh>
+              </group>
+            );
+          })}
+        </group>
+
+        {/* Floating health bar */}
+        <group position={[0, 6.2, 0]}>
+          <mesh position={[0, 0, -0.01]}>
+            <planeGeometry args={[7, 0.5]} />
+            <meshBasicMaterial color="#20062b" transparent opacity={0.75} toneMapped={false} />
+          </mesh>
+          <mesh ref={healthBar} position={[0, 0, 0]}>
+            <planeGeometry args={[6.8, 0.34]} />
+            <meshBasicMaterial color="#e879f9" toneMapped={false} />
+          </mesh>
+        </group>
+      </group>
+    );
+  }
 
   return (
     <group ref={group} position={data.pos}>

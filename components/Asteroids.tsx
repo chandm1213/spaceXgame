@@ -26,8 +26,8 @@ function Asteroid({ data }: { data: AsteroidData }) {
     const game = useGame.getState();
     if (game.status !== 'playing') return;
 
-    // Drift across the field
-    data.pos.addScaledVector(data.vel, delta);
+    // Drift across the field (slowed during an OVERDRIVE supernova)
+    data.pos.addScaledVector(data.vel, delta * world.timeScale);
     g.position.copy(data.pos);
     g.rotation.x += spin.x * delta;
     g.rotation.y += spin.y * delta;

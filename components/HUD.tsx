@@ -140,12 +140,16 @@ function Radar() {
       for (const a of aliens) {
         const p = plot(a.pos.x, a.pos.z);
         if (!p) continue;
-        const boss = a.kind === 2;
-        ctx.fillStyle = boss ? '#f43f5e' : a.kind === 0 ? '#c084fc' : '#4ade80';
+        const boss = a.kind === 2 || a.kind === 3;
+        ctx.fillStyle =
+          a.kind === 3 ? '#e879f9'
+          : a.kind === 2 ? '#f43f5e'
+          : a.kind === 0 ? '#c084fc'
+          : '#4ade80';
         ctx.shadowColor = ctx.fillStyle;
         ctx.shadowBlur = boss ? 10 : 6;
         ctx.beginPath();
-        ctx.arc(p.px, p.py, boss ? 5.5 : 3.2, 0, Math.PI * 2);
+        ctx.arc(p.px, p.py, a.kind === 3 ? 7 : boss ? 5.5 : 3.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
       }
@@ -470,6 +474,9 @@ function Joystick({
 function MobileControls() {
   const weaponId = useGame((s) => s.weaponId);
   const setWeapon = useGame((s) => s.setWeapon);
+  const overdrive = useGame((s) => s.overdrive);
+  const odActive = useGame((s) => s.overdriveActive);
+  const odReady = overdrive >= 100 && !odActive;
 
   const handleLeftMove = useCallback((nx: number, ny: number) => {
     input.touchMove.x = nx;
@@ -549,8 +556,25 @@ function MobileControls() {
             onMove={handleRightMove}
             onEnd={handleRightEnd}
           />
-          {/* Spacer to align with boost button */}
-          <div style={{ height: 36 }} />
+          {/* OVERDRIVE trigger — only fires when fully charged */}
+          <button
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              const g = useGame.getState();
+              if (g.overdrive >= 100 && !g.overdriveActive) {
+                g.detonateOverdrive();
+                sfx.overdrive();
+              }
+            }}
+            style={{ touchAction: 'none' }}
+            className={`clip-corners border px-4 py-2 text-[9px] tracking-[0.3em] transition-all ${
+              odReady
+                ? 'animate-pulseGlow border-fuchsia-300/80 bg-fuchsia-500/25 text-fuchsia-100'
+                : 'border-fuchsia-400/20 bg-fuchsia-950/20 text-fuchsia-300/40'
+            }`}
+          >
+            OVERDRIVE
+          </button>
         </div>
       </div>
     </div>
@@ -750,6 +774,68 @@ function WeaponReadout() {
   );
 }
 
+function OverdriveMeter() {
+  const overdrive = useGame((s) => s.overdrive);
+  const active = useGame((s) => s.overdriveActive);
+  const ready = overdrive >= 100 && !active;
+  return (
+    <div className="pointer-events-none absolute bottom-16 left-1/2 z-20 -translate-x-1/2 text-center">
+      <div
+        className={`text-[9px] tracking-[0.4em] ${
+          ready ? 'animate-pulseGlow text-fuchsia-200' : 'text-fuchsia-400/60'
+        }`}
+        style={{ fontFamily: 'Orbitron, sans-serif' }}
+      >
+        {ready ? '◈ OVERDRIVE READY — SPACE ◈' : `OVERDRIVE ${Math.floor(overdrive)}%`}
+      </div>
+      <div className="clip-corners mx-auto mt-1 h-2 w-44 border border-fuchsia-400/40 bg-fuchsia-950/40 p-px md:w-60">
+        <div
+          className="h-full transition-[width] duration-200"
+          style={{
+            width: `${overdrive}%`,
+            background: ready
+              ? 'linear-gradient(90deg, #e879f9, #fce7ff)'
+              : 'linear-gradient(90deg, #a21caf66, #e879f9)',
+            boxShadow: `0 0 ${ready ? 14 : 6}px #e879f9`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OverdriveBanner() {
+  const flash = useGame((s) => s.overdriveFlash);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!flash) return;
+    setShow(true);
+    const t = setTimeout(() => setShow(false), 1300);
+    return () => clearTimeout(t);
+  }, [flash]);
+  if (!show) return null;
+  return (
+    <div className="pointer-events-none absolute inset-0 z-40">
+      <div
+        className="absolute inset-0 animate-pulseGlow"
+        style={{
+          background:
+            'radial-gradient(circle at center, rgba(232,121,249,0.5), rgba(168,85,247,0.25) 45%, transparent 75%)',
+        }}
+      />
+      <div className="absolute left-1/2 top-1/3 -translate-x-1/2 text-center">
+        <div className="text-[10px] tracking-[0.5em] text-fuchsia-300/80">SUPERNOVA UNLEASHED</div>
+        <div
+          className="text-glow-cyan mt-1 text-4xl font-black tracking-[0.25em] text-fuchsia-100 md:text-6xl"
+          style={{ fontFamily: 'Orbitron, sans-serif' }}
+        >
+          BLACK HORIZON
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Menu() {
   const start = useGame((s) => s.start);
   const highScore = useGame((s) => s.highScore);
@@ -807,6 +893,7 @@ function Menu() {
           <span className="text-right text-cyan-400/80">CLICK / HOLD</span><span>FIRE WEAPON</span>
           <span className="text-right text-cyan-400/80">1 – 4</span><span>SWITCH WEAPON</span>
           <span className="text-right text-cyan-400/80">SHIFT</span><span>AFTERBURNER</span>
+          <span className="text-right text-fuchsia-400/80">SPACE</span><span>OVERDRIVE</span>
         </div>
         {/* Mobile controls hint */}
         <div className="mt-8 flex flex-col items-center gap-1.5 text-[11px] tracking-widest text-slate-500 md:hidden">
@@ -890,7 +977,7 @@ function GameOver() {
         <span className="text-right text-cyan-300">{fragments}</span>
         <span className="text-slate-400">HOSTILES DOWN</span>
         <span className="text-right text-cyan-300">{kills}</span>
-        <span className="text-slate-400">BEHEMOTHS SLAIN</span>
+        <span className="text-slate-400">BOSSES SLAIN</span>
         <span className="text-right text-cyan-300">{bossKills}</span>
         <span className="text-slate-400">OBJECTIVES CLEARED</span>
         <span className="text-right text-cyan-300">{Math.min(missionIndex, MISSIONS.length)} / {MISSIONS.length}</span>
@@ -1010,12 +1097,16 @@ export default function HUD() {
           <WormholePrompt />
           <WarpFlash />
 
+          {/* Bottom-center: OVERDRIVE charge meter + supernova banner */}
+          <OverdriveMeter />
+          <OverdriveBanner />
+
           {/* Bottom-center: weapon readout (desktop only) */}
           {!isMobile && <WeaponReadout />}
 
           {/* Bottom-left: controls reminder (desktop only) */}
           <div className="absolute bottom-5 left-5 hidden text-[10px] leading-relaxed tracking-[0.25em] text-cyan-400/40 md:block">
-            WASD · THRUST&nbsp;&nbsp;|&nbsp;&nbsp;MOUSE · AIM&nbsp;&nbsp;|&nbsp;&nbsp;CLICK · FIRE&nbsp;&nbsp;|&nbsp;&nbsp;1-4 · WEAPON&nbsp;&nbsp;|&nbsp;&nbsp;SHIFT · BOOST
+            WASD · THRUST&nbsp;&nbsp;|&nbsp;&nbsp;MOUSE · AIM&nbsp;&nbsp;|&nbsp;&nbsp;CLICK · FIRE&nbsp;&nbsp;|&nbsp;&nbsp;1-4 · WEAPON&nbsp;&nbsp;|&nbsp;&nbsp;SHIFT · BOOST&nbsp;&nbsp;|&nbsp;&nbsp;<span className="text-fuchsia-400/60">SPACE · OVERDRIVE</span>
           </div>
 
           {/* Corner frame brackets */}

@@ -7,6 +7,9 @@ export const world = {
   shipHeading: 0, // radians, 0 = facing -Z
   shipSpeed: 0,
   thrusting: false,
+  // Slow-motion multiplier for hostiles. 1 = normal; drops during an
+  // OVERDRIVE supernova so enemies crawl while the pilot stays fast.
+  timeScale: 1,
 };
 
 // Raw input state, written by window listeners and mobile controls, read inside useFrame.

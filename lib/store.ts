@@ -5,8 +5,8 @@ import { MISSIONS } from './loadout';
 
 export type GameStatus = 'menu' | 'playing' | 'gameover';
 
-// 0 = Stalker (purple), 1 = Drone (green), 2 = Behemoth boss (red)
-export type AlienKind = 0 | 1 | 2;
+// 0 = Stalker (purple), 1 = Drone (green), 2 = Behemoth boss (red), 3 = Mothership (magenta)
+export type AlienKind = 0 | 1 | 2 | 3;
 
 export interface AlienData {
   id: number;
@@ -53,7 +53,10 @@ export interface BoomData {
   big: boolean;
 }
 
-const ALIEN_HP: Record<AlienKind, number> = { 0: 2, 1: 1, 2: 45 };
+const ALIEN_HP: Record<AlienKind, number> = { 0: 2, 1: 1, 2: 45, 3: 130 };
+
+// Overdrive charge gained per hostile destroyed (caps at 100 = ready)
+const OVERDRIVE_CHARGE: Record<AlienKind, number> = { 0: 7, 1: 5, 2: 38, 3: 55 };
 
 const HIGHSCORE_KEY = 'sbh-highscore';
 function loadHighScore() {
@@ -76,6 +79,12 @@ interface GameState {
   // Persistent best score + whether the last run beat it
   highScore: number;
   newRecord: boolean;
+
+  // OVERDRIVE — kills charge the meter; at 100 the pilot can unleash a
+  // BLACK HORIZON supernova that wipes the field and slows time.
+  overdrive: number; // 0..100 charge
+  overdriveActive: boolean; // true during the supernova window
+  overdriveFlash: number; // timestamp of last detonation, drives HUD + shockwave
 
   // Loadout (persists across runs within a session)
   skinId: number;
@@ -101,6 +110,9 @@ interface GameState {
 
   setSkin: (id: number) => void;
   setWeapon: (id: number) => void;
+
+  detonateOverdrive: () => void;
+  endOverdrive: () => void;
 
   spawnAlien: (pos: THREE.Vector3, kind: AlienKind) => void;
   killAlien: (id: number, byCrash: boolean) => void;
@@ -133,6 +145,10 @@ export const useGame = create<GameState>((set, get) => ({
   highScore: loadHighScore(),
   newRecord: false,
 
+  overdrive: 0,
+  overdriveActive: false,
+  overdriveFlash: 0,
+
   skinId: 0,
   weaponId: 0,
 
@@ -161,6 +177,9 @@ export const useGame = create<GameState>((set, get) => ({
       kills: 0,
       bossKills: 0,
       hitFlash: 0,
+      overdrive: 0,
+      overdriveActive: false,
+      overdriveFlash: 0,
       newRecord: false,
       missionIndex: 0,
       missionFlash: 0,
@@ -188,6 +207,51 @@ export const useGame = create<GameState>((set, get) => ({
   setSkin: (id) => set({ skinId: id }),
   setWeapon: (id) => set({ weaponId: id }),
 
+  // BLACK HORIZON supernova: at full charge, annihilate every hostile in the
+  // field at once, banking their score, and trigger the slow-motion window.
+  detonateOverdrive: () => {
+    const s = get();
+    if (s.overdriveActive || s.overdrive < 100 || s.status !== 'playing') return;
+    let score = s.score;
+    let kills = s.kills;
+    let bossKills = s.bossKills;
+    const booms: BoomData[] = [...s.booms];
+    for (const a of s.aliens) {
+      const isApex = a.kind === 2 || a.kind === 3;
+      score += a.kind === 3 ? 2500 : a.kind === 2 ? 750 : 100;
+      kills += 1;
+      if (isApex) bossKills += 1;
+      booms.push({
+        id: uid(),
+        pos: a.pos.clone(),
+        color:
+          a.kind === 3 ? '#e879f9'
+          : a.kind === 2 ? '#f87171'
+          : a.kind === 0 ? '#c084fc'
+          : '#4ade80',
+        big: a.kind !== 1,
+      });
+    }
+    for (const r of s.asteroids) {
+      score += r.big ? 120 : 40;
+      booms.push({ id: uid(), pos: r.pos.clone(), color: '#fbbf24', big: r.big });
+    }
+    set({
+      aliens: [],
+      asteroids: [],
+      booms,
+      score,
+      kills,
+      bossKills,
+      overdrive: 0,
+      overdriveActive: true,
+      overdriveFlash: performance.now(),
+    });
+    checkMission(get, set);
+  },
+
+  endOverdrive: () => set({ overdriveActive: false }),
+
   spawnAlien: (pos, kind) =>
     set((s) => {
       // Deeper zones spawn tougher hostiles: +50% HP per zone past the first
@@ -204,12 +268,13 @@ export const useGame = create<GameState>((set, get) => ({
     const s = get();
     const alien = s.aliens.find((a) => a.id === id);
     if (!alien) return;
+    const isApex = alien.kind === 2 || alien.kind === 3; // bosses
     // Star fragments always scatter, even on crash — crash damage is already the penalty
     const drops: CrystalData[] = [];
-    const count = alien.kind === 2 ? 9 : alien.kind === 0 ? 3 : 2;
+    const count = alien.kind === 3 ? 14 : alien.kind === 2 ? 9 : alien.kind === 0 ? 3 : 2;
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const radius = 1 + Math.random() * (alien.kind === 2 ? 4 : 2.5);
+      const radius = 1 + Math.random() * (isApex ? 5 : 2.5);
       drops.push({
         id: uid(),
         pos: new THREE.Vector3(
@@ -220,22 +285,27 @@ export const useGame = create<GameState>((set, get) => ({
         seed: Math.random() * 100,
       });
     }
-    const gained = alien.kind === 2 ? 750 : 100;
+    const gained = alien.kind === 3 ? 2500 : alien.kind === 2 ? 750 : 100;
+    const boomColor =
+      alien.kind === 3 ? '#e879f9'
+      : alien.kind === 2 ? '#f87171'
+      : alien.kind === 0 ? '#c084fc'
+      : '#4ade80';
+    // Charge OVERDRIVE only on real kills — capped at 100
+    const overdrive = byCrash
+      ? s.overdrive
+      : Math.min(100, s.overdrive + OVERDRIVE_CHARGE[alien.kind]);
     set({
       aliens: s.aliens.filter((a) => a.id !== id),
       crystals: [...s.crystals, ...drops],
       booms: [
         ...s.booms,
-        {
-          id: uid(),
-          pos: alien.pos.clone(),
-          color: alien.kind === 2 ? '#f87171' : alien.kind === 0 ? '#c084fc' : '#4ade80',
-          big: alien.kind !== 1,
-        },
+        { id: uid(), pos: alien.pos.clone(), color: boomColor, big: alien.kind !== 1 },
       ],
       score: byCrash ? s.score : s.score + gained,
       kills: byCrash ? s.kills : s.kills + 1,
-      bossKills: byCrash || alien.kind !== 2 ? s.bossKills : s.bossKills + 1,
+      bossKills: byCrash || !isApex ? s.bossKills : s.bossKills + 1,
+      overdrive,
     });
     if (!byCrash) checkMission(get, set);
   },
@@ -307,6 +377,7 @@ export const useGame = create<GameState>((set, get) => ({
         { id: uid(), pos: rock.pos.clone(), color: '#fbbf24', big: rock.big },
       ],
       score: byCrash ? s.score : s.score + (rock.big ? 120 : 40),
+      overdrive: byCrash ? s.overdrive : Math.min(100, s.overdrive + (rock.big ? 4 : 2)),
     });
   },
 

@@ -14,6 +14,7 @@ import Bolts from './Bolts';
 import Crystals from './Crystals';
 import Explosions from './Explosions';
 import Wormhole from './Wormhole';
+import Overdrive from './Overdrive';
 import { Director, CameraRig } from './Systems';
 import HUD from './HUD';
 
@@ -74,6 +75,7 @@ export default function Game() {
             <Crystals />
             <Explosions />
             <Wormhole />
+            <Overdrive />
             <Director />
           </>
         )}
