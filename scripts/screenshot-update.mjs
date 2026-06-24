@@ -5,7 +5,11 @@ const page = await (await browser.newContext({ viewport: { width: 1440, height: 
 
 await page.goto('http://localhost:3017', { waitUntil: 'domcontentloaded' });
 await page.getByRole('button', { name: 'LAUNCH MISSION' }).click({ timeout: 30000 });
-await page.waitForTimeout(2500);
+await page.waitForTimeout(1800);
+
+// Clean establishing shot of the deep-space backdrop
+await page.screenshot({ path: 'screenshots/update-space.png' });
+await page.waitForTimeout(700);
 
 // --- Mothership ---
 await page.evaluate(() => window.__spawnMother());

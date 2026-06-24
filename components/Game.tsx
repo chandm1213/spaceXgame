@@ -81,7 +81,7 @@ export default function Game() {
         )}
 
         <EffectComposer>
-          <Bloom mipmapBlur intensity={1.1} luminanceThreshold={1.0} luminanceSmoothing={0.3} />
+          <Bloom mipmapBlur intensity={1.45} luminanceThreshold={0.85} luminanceSmoothing={0.4} />
           <ChromaticAberration offset={aberration} radialModulation={false} modulationOffset={0} />
           <Vignette eskil={false} offset={0.18} darkness={0.85} />
         </EffectComposer>

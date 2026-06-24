@@ -145,23 +145,98 @@ function FloatingAsteroids({ count = 45 }: { count?: number }) {
   );
 }
 
+// Soft radial glow texture for distant galaxies
+function makeGalaxyTexture(inner: string, outer: string) {
+  const size = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const ctx = cv.getContext('2d')!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, inner);
+  g.addColorStop(0.25, outer);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  // A couple of faint spiral sweeps for galaxy character
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = outer;
+  ctx.lineWidth = 6;
+  for (let s = 0; s < 2; s++) {
+    ctx.beginPath();
+    for (let a = 0; a < Math.PI * 2.4; a += 0.1) {
+      const r = a * 14 + 8;
+      const x = size / 2 + Math.cos(a + s * Math.PI) * r;
+      const y = size / 2 + Math.sin(a + s * Math.PI) * r * 0.5;
+      a === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  return tex;
+}
+
+function Galaxies() {
+  const spirals = useMemo(
+    () => [
+      { tex: makeGalaxyTexture('rgba(255,255,255,0.9)', 'rgba(168,85,247,0.55)'), pos: [150, 38, -320], size: 64, rot: 0.5 },
+      { tex: makeGalaxyTexture('rgba(255,245,230,0.9)', 'rgba(56,189,248,0.4)'), pos: [-160, 48, -340], size: 50, rot: -0.8 },
+      { tex: makeGalaxyTexture('rgba(255,255,255,0.85)', 'rgba(232,121,249,0.45)'), pos: [40, 58, -350], size: 44, rot: 1.4 },
+    ],
+    []
+  );
+  return (
+    <>
+      {spirals.map((s, i) => (
+        <mesh key={i} position={s.pos as [number, number, number]} rotation={[0, 0, s.rot]}>
+          <planeGeometry args={[s.size, s.size]} />
+          <meshBasicMaterial
+            map={s.tex}
+            transparent
+            opacity={0.85}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            fog={false}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
+// A distant ringed gas giant for depth
+function RingedPlanet() {
+  return (
+    <group position={[125, 34, -300]} rotation={[1.1, 0, 0.3]}>
+      <mesh>
+        <sphereGeometry args={[46, 48, 48]} />
+        <meshStandardMaterial color="#3b2a6b" emissive="#5b3ba8" emissiveIntensity={0.25} roughness={1} fog={false} />
+      </mesh>
+      <mesh rotation={[Math.PI / 2.1, 0, 0]}>
+        <ringGeometry args={[58, 88, 64]} />
+        <meshBasicMaterial color="#a78bfa" transparent opacity={0.35} side={THREE.DoubleSide} fog={false} toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
 function Mars() {
   return (
-    <group position={[-180, 90, -260]}>
+    <group position={[-95, 45, -285]}>
       <mesh>
-        <sphereGeometry args={[70, 48, 48]} />
+        <sphereGeometry args={[115, 64, 64]} />
         <meshStandardMaterial
           color="#7c2d12"
           emissive="#b4530a"
-          emissiveIntensity={0.22}
+          emissiveIntensity={0.28}
           roughness={1}
           fog={false}
         />
       </mesh>
-      {/* Faint rim glow */}
-      <mesh scale={1.04}>
-        <sphereGeometry args={[70, 32, 32]} />
-        <meshBasicMaterial color="#f97316" transparent opacity={0.05} side={THREE.BackSide} fog={false} />
+      {/* Atmospheric rim glow */}
+      <mesh scale={1.05}>
+        <sphereGeometry args={[115, 48, 48]} />
+        <meshBasicMaterial color="#f97316" transparent opacity={0.07} side={THREE.BackSide} fog={false} />
       </mesh>
     </group>
   );
@@ -175,8 +250,10 @@ export default function Environment() {
       {/* The faintest Mars-shine from above */}
       <hemisphereLight intensity={0.05} color="#b4530a" groundColor="#0a0a12" />
 
-      <Stars radius={300} depth={80} count={5000} factor={5} saturation={0} fade speed={0.4} />
+      <Stars radius={320} depth={90} count={8000} factor={5} saturation={0} fade speed={0.4} />
+      <Galaxies />
       <Mars />
+      <RingedPlanet />
       <PhobosTerrain />
       <SurfaceRocks />
       <FloatingAsteroids />

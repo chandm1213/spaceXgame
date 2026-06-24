@@ -24,6 +24,8 @@ function Alien({ data }: { data: AlienData }) {
   const healthBar = useRef<THREE.Mesh>(null);
   const droneTimer = useRef(5);
   const coreLight = useRef<THREE.PointLight>(null);
+  const ringMat = useRef<THREE.MeshStandardMaterial>(null);
+  const coreMat = useRef<THREE.MeshStandardMaterial>(null);
 
   const isBoss = data.kind === 2;
   const isMother = data.kind === 3;
@@ -85,10 +87,23 @@ function Alien({ data }: { data: AlienData }) {
           sfx.swap();
         }
       }
+      const c = enraged ? '#fb3b6b' : '#e879f9';
       if (coreLight.current) {
         const pulse = 0.7 + Math.sin(t * (enraged ? 9 : 4)) * 0.3;
-        coreLight.current.intensity = (enraged ? 220 : 140) * pulse;
-        coreLight.current.color.set(enraged ? '#fb3b6b' : '#e879f9');
+        coreLight.current.intensity = (enraged ? 240 : 150) * pulse;
+        coreLight.current.color.set(c);
+      }
+      // Electric energy ring crackles — fast erratic flicker
+      if (ringMat.current) {
+        const flick = 4 + Math.sin(t * 30) * 1.5 + Math.sin(t * 11.3) * 2;
+        ringMat.current.emissiveIntensity = enraged ? flick * 1.5 : flick;
+        ringMat.current.emissive.set(c);
+        ringMat.current.color.set(c);
+      }
+      if (coreMat.current) {
+        coreMat.current.emissiveIntensity = 7 + Math.sin(t * (enraged ? 12 : 5)) * 3;
+        coreMat.current.emissive.set(c);
+        coreMat.current.color.set(c);
       }
     }
 
@@ -145,13 +160,38 @@ function Alien({ data }: { data: AlienData }) {
           {/* Glowing reactor core under the hull */}
           <mesh position={[0, -1.4, 0]}>
             <sphereGeometry args={[1.0, 20, 20]} />
-            <meshStandardMaterial color={glowColor} emissive={glowColor} emissiveIntensity={6} toneMapped={false} />
+            <meshStandardMaterial ref={coreMat} color={glowColor} emissive={glowColor} emissiveIntensity={7} toneMapped={false} />
           </mesh>
-          {/* Rotating energy band around the rim */}
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[5.3, 0.16, 8, 64]} />
-            <meshStandardMaterial color={glowColor} emissive={glowColor} emissiveIntensity={3.5} toneMapped={false} />
+          {/* Lens-flare disc blasting down from the core */}
+          <mesh position={[0, -1.9, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[2.6, 32]} />
+            <meshBasicMaterial color={glowColor} transparent opacity={0.5} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} side={THREE.DoubleSide} />
           </mesh>
+          {/* Bright electric energy ring wrapping the hull (layered for glow) */}
+          <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.35, 0]}>
+            <torusGeometry args={[5.25, 0.09, 8, 96]} />
+            <meshStandardMaterial ref={ringMat} color={glowColor} emissive={glowColor} emissiveIntensity={5} toneMapped={false} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0.35, 0]}>
+            <torusGeometry args={[5.25, 0.3, 8, 96]} />
+            <meshBasicMaterial color={glowColor} transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+          </mesh>
+          {/* Hull running-light strips — warm windows like a city in the dark */}
+          {Array.from({ length: 40 }).map((_, i) => {
+            const a = (i / 40) * Math.PI * 2;
+            const r = 4.2 + (i % 2) * 0.55;
+            return (
+              <mesh key={`win-${i}`} position={[Math.cos(a) * r, 0.05, Math.sin(a) * r]}>
+                <boxGeometry args={[0.12, 0.06, 0.12]} />
+                <meshStandardMaterial
+                  color={i % 3 === 0 ? '#67e8f9' : '#fb923c'}
+                  emissive={i % 3 === 0 ? '#67e8f9' : '#fb923c'}
+                  emissiveIntensity={4}
+                  toneMapped={false}
+                />
+              </mesh>
+            );
+          })}
           {/* Turret pods + running lights around the rim */}
           {Array.from({ length: 10 }).map((_, i) => {
             const a = (i / 10) * Math.PI * 2;
