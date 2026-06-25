@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useGame } from '@/lib/store';
+import { useGame, COMBO_WINDOW } from '@/lib/store';
 import { world, input } from '@/lib/world';
 import { initAudio, sfx } from '@/lib/audio';
 import { music } from '@/lib/music';
@@ -775,6 +775,52 @@ function WeaponReadout() {
   );
 }
 
+// Colour ramps as the chain climbs — cool → white-hot.
+const COMBO_COLORS = ['#22d3ee', '#22d3ee', '#4ade80', '#fbbf24', '#fb923c', '#f472b6', '#f43f5e', '#fde047'];
+
+function ComboMeter() {
+  const comboMult = useGame((s) => s.comboMult);
+  const combo = useGame((s) => s.combo);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      if (!barRef.current) return;
+      const s = useGame.getState();
+      const remain = (s.comboExpire - performance.now()) / (COMBO_WINDOW * 1000);
+      barRef.current.style.width = `${Math.max(0, Math.min(1, remain)) * 100}%`;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Only surfaces once the chain is actually multiplying (x2+).
+  if (comboMult <= 1) return null;
+  const color = COMBO_COLORS[Math.min(comboMult, COMBO_COLORS.length - 1)];
+
+  return (
+    <div
+      key={comboMult} // re-trigger the pop animation on each tier up
+      className="pointer-events-none absolute left-1/2 top-[19%] z-20 -translate-x-1/2 animate-comboPop text-center"
+    >
+      <div
+        className="text-5xl font-black leading-none md:text-6xl"
+        style={{ fontFamily: 'Orbitron, sans-serif', color, textShadow: `0 0 18px ${color}` }}
+      >
+        x{comboMult}
+      </div>
+      <div className="mt-1 text-[10px] tracking-[0.5em]" style={{ color }}>
+        {combo} KILL COMBO
+      </div>
+      <div className="clip-corners mx-auto mt-1.5 h-1 w-28 overflow-hidden bg-black/40">
+        <div ref={barRef} className="h-full" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+      </div>
+    </div>
+  );
+}
+
 function OverdriveMeter() {
   const overdrive = useGame((s) => s.overdrive);
   const active = useGame((s) => s.overdriveActive);
@@ -950,7 +996,7 @@ function Menu() {
 }
 
 function GameOver() {
-  const { score, fragments, kills, wave, zone, bossKills, missionIndex, highScore, newRecord, start } = useGame();
+  const { score, fragments, kills, wave, zone, bossKills, missionIndex, highScore, newRecord, bestCombo, start } = useGame();
   useEffect(() => {
     sfx.gameover();
   }, []);
@@ -984,6 +1030,8 @@ function GameOver() {
         <span className="text-right text-cyan-300">{fragments}</span>
         <span className="text-slate-400">HOSTILES DOWN</span>
         <span className="text-right text-cyan-300">{kills}</span>
+        <span className="text-slate-400">BEST COMBO</span>
+        <span className="text-right text-cyan-300">{bestCombo} KILLS</span>
         <span className="text-slate-400">BOSSES SLAIN</span>
         <span className="text-right text-cyan-300">{bossKills}</span>
         <span className="text-slate-400">OBJECTIVES CLEARED</span>
@@ -1098,6 +1146,9 @@ export default function HUD() {
           <div className="absolute bottom-5 right-5 hidden md:block">
             <Radar />
           </div>
+
+          {/* Kill-chain combo multiplier */}
+          <ComboMeter />
 
           {/* Top-center: mission objective */}
           <MissionTracker />

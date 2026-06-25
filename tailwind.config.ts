@@ -29,11 +29,17 @@ const config: Config = {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.4' },
         },
+        comboPop: {
+          '0%': { transform: 'translateX(-50%) scale(1.5)', opacity: '0.2' },
+          '60%': { transform: 'translateX(-50%) scale(0.92)', opacity: '1' },
+          '100%': { transform: 'translateX(-50%) scale(1)', opacity: '1' },
+        },
       },
       animation: {
         scanline: 'scanline 8s linear infinite',
         flicker: 'flicker 3s ease-in-out infinite',
         pulseGlow: 'pulseGlow 1.2s ease-in-out infinite',
+        comboPop: 'comboPop 0.28s ease-out',
       },
     },
   },

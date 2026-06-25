@@ -32,6 +32,9 @@ export function Director() {
     const game = useGame.getState();
     if (game.status !== 'playing') return;
 
+    // Break the kill-chain when its timer runs out
+    game.tickCombo();
+
     // Wave escalation every 28 seconds
     waveTimer.current += delta;
     if (waveTimer.current > 28) {

@@ -56,6 +56,14 @@ export interface BoomData {
 
 const ALIEN_HP: Record<AlienKind, number> = { 0: 2, 1: 1, 2: 45, 3: 130 };
 
+// COMBO: consecutive kills within this window keep the chain alive; the
+// multiplier climbs one step every 3 kills, capped at x8.
+export const COMBO_WINDOW = 3.2; // seconds before the chain breaks
+export const COMBO_MAX = 8;
+export function comboMultiplier(combo: number) {
+  return Math.min(COMBO_MAX, 1 + Math.floor(combo / 3));
+}
+
 // Overdrive charge gained per hostile destroyed (caps at 100 = ready)
 const OVERDRIVE_CHARGE: Record<AlienKind, number> = { 0: 7, 1: 5, 2: 38, 3: 55 };
 
@@ -86,6 +94,12 @@ interface GameState {
   rockBig: number;
   warps: number;
   runStartMs: number; // wall-clock start of the current run
+
+  // Kill-chain combo
+  combo: number; // consecutive kills in the current chain
+  comboMult: number; // current score multiplier (1..COMBO_MAX)
+  comboExpire: number; // performance.now() ms when the chain breaks
+  bestCombo: number; // highest chain this run
 
   // Persistent best score + whether the last run beat it
   highScore: number;
@@ -119,6 +133,7 @@ interface GameState {
   start: () => void;
   gameOver: () => void;
   getRunBreakdown: () => RunBreakdown;
+  tickCombo: () => void; // break the chain when its timer runs out
 
   setSkin: (id: number) => void;
   setWeapon: (id: number) => void;
@@ -163,6 +178,11 @@ export const useGame = create<GameState>((set, get) => ({
   warps: 0,
   runStartMs: 0,
 
+  combo: 0,
+  comboMult: 1,
+  comboExpire: 0,
+  bestCombo: 0,
+
   highScore: loadHighScore(),
   newRecord: false,
 
@@ -206,6 +226,10 @@ export const useGame = create<GameState>((set, get) => ({
       rockBig: 0,
       warps: 0,
       runStartMs: Date.now(),
+      combo: 0,
+      comboMult: 1,
+      comboExpire: 0,
+      bestCombo: 0,
       overdrive: 0,
       overdriveActive: false,
       overdriveFlash: 0,
@@ -252,6 +276,13 @@ export const useGame = create<GameState>((set, get) => ({
     };
   },
 
+  tickCombo: () => {
+    const s = get();
+    if (s.combo > 0 && performance.now() > s.comboExpire) {
+      set({ combo: 0, comboMult: 1 });
+    }
+  },
+
   setSkin: (id) => set({ skinId: id }),
   setWeapon: (id) => set({ weaponId: id }),
 
@@ -260,14 +291,14 @@ export const useGame = create<GameState>((set, get) => ({
   detonateOverdrive: () => {
     const s = get();
     if (s.overdriveActive || s.overdrive < 100 || s.status !== 'playing') return;
-    let score = s.score;
+    let haul = 0;
     let kills = s.kills;
     let bossKills = s.bossKills;
     let kStalker = 0, kDrone = 0, kBehemoth = 0, kMother = 0, rSmall = 0, rBig = 0;
     const booms: BoomData[] = [...s.booms];
     for (const a of s.aliens) {
       const isApex = a.kind === 2 || a.kind === 3;
-      score += a.kind === 3 ? 2500 : a.kind === 2 ? 750 : 100;
+      haul += a.kind === 3 ? 2500 : a.kind === 2 ? 750 : 100;
       kills += 1;
       if (isApex) bossKills += 1;
       if (a.kind === 0) kStalker += 1;
@@ -286,15 +317,24 @@ export const useGame = create<GameState>((set, get) => ({
       });
     }
     for (const r of s.asteroids) {
-      score += r.big ? 120 : 40;
+      haul += r.big ? 120 : 40;
       if (r.big) rBig += 1; else rSmall += 1;
       booms.push({ id: uid(), pos: r.pos.clone(), color: '#fbbf24', big: r.big });
     }
+    // The supernova extends the kill-chain by everything it wiped out
+    const cleared = s.aliens.length + s.asteroids.length;
+    const now = performance.now();
+    const chain = (s.combo > 0 && now <= s.comboExpire ? s.combo : 0) + cleared;
+    const mult = comboMultiplier(chain);
     set({
       aliens: [],
       asteroids: [],
       booms,
-      score,
+      score: s.score + haul * mult,
+      combo: chain,
+      comboMult: mult,
+      comboExpire: cleared > 0 ? now + COMBO_WINDOW * 1000 : s.comboExpire,
+      bestCombo: Math.max(s.bestCombo, chain),
       kills,
       bossKills,
       killStalker: s.killStalker + kStalker,
@@ -355,6 +395,10 @@ export const useGame = create<GameState>((set, get) => ({
     const overdrive = byCrash
       ? s.overdrive
       : Math.min(100, s.overdrive + OVERDRIVE_CHARGE[alien.kind]);
+    // Extend the kill-chain; this kill scores at the new multiplier
+    const now = performance.now();
+    const chain = byCrash ? s.combo : (s.combo > 0 && now <= s.comboExpire ? s.combo : 0) + 1;
+    const mult = byCrash ? s.comboMult : comboMultiplier(chain);
     set({
       aliens: s.aliens.filter((a) => a.id !== id),
       crystals: [...s.crystals, ...drops],
@@ -362,7 +406,11 @@ export const useGame = create<GameState>((set, get) => ({
         ...s.booms,
         { id: uid(), pos: alien.pos.clone(), color: boomColor, big: alien.kind !== 1 },
       ],
-      score: byCrash ? s.score : s.score + gained,
+      score: byCrash ? s.score : s.score + gained * mult,
+      combo: chain,
+      comboMult: mult,
+      comboExpire: byCrash ? s.comboExpire : now + COMBO_WINDOW * 1000,
+      bestCombo: Math.max(s.bestCombo, chain),
       kills: byCrash ? s.kills : s.kills + 1,
       bossKills: byCrash || !isApex ? s.bossKills : s.bossKills + 1,
       killStalker: s.killStalker + (!byCrash && alien.kind === 0 ? 1 : 0),
@@ -433,6 +481,9 @@ export const useGame = create<GameState>((set, get) => ({
         seed: Math.random() * 100,
       });
     }
+    const now = performance.now();
+    const chain = byCrash ? s.combo : (s.combo > 0 && now <= s.comboExpire ? s.combo : 0) + 1;
+    const mult = byCrash ? s.comboMult : comboMultiplier(chain);
     set({
       asteroids: s.asteroids.filter((a) => a.id !== id),
       crystals: [...s.crystals, ...drops],
@@ -440,7 +491,11 @@ export const useGame = create<GameState>((set, get) => ({
         ...s.booms,
         { id: uid(), pos: rock.pos.clone(), color: '#fbbf24', big: rock.big },
       ],
-      score: byCrash ? s.score : s.score + (rock.big ? 120 : 40),
+      score: byCrash ? s.score : s.score + (rock.big ? 120 : 40) * mult,
+      combo: chain,
+      comboMult: mult,
+      comboExpire: byCrash ? s.comboExpire : now + COMBO_WINDOW * 1000,
+      bestCombo: Math.max(s.bestCombo, chain),
       rockSmall: s.rockSmall + (!byCrash && !rock.big ? 1 : 0),
       rockBig: s.rockBig + (!byCrash && rock.big ? 1 : 0),
       overdrive: byCrash ? s.overdrive : Math.min(100, s.overdrive + (rock.big ? 4 : 2)),

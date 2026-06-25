@@ -33,17 +33,30 @@ export interface RunBreakdown {
   durationSec: number;
 }
 
-// Recompute the only score a run is allowed to claim from its counters.
-export function scoreFromBreakdown(b: RunBreakdown): number {
-  let s = 0;
-  s += (b.killStalker + b.killDrone) * PTS.grunt;
-  s += b.killBehemoth * PTS.behemoth;
-  s += b.killMother * PTS.mother;
-  s += b.rockSmall * PTS.rockSmall + b.rockBig * PTS.rockBig;
-  s += b.fragments * PTS.crystal;
-  s += b.warps * PTS.warp;
+// Max combo multiplier — must match COMBO_MAX in store.ts.
+const COMBO_MAX = 8;
+
+// Combat score (kills + rocks) is what the combo multiplier scales — 1x..COMBO_MAX.
+function combatBase(b: RunBreakdown): number {
+  return (
+    (b.killStalker + b.killDrone) * PTS.grunt +
+    b.killBehemoth * PTS.behemoth +
+    b.killMother * PTS.mother +
+    b.rockSmall * PTS.rockSmall +
+    b.rockBig * PTS.rockBig
+  );
+}
+
+// Fixed bonuses the combo does NOT scale.
+function fixedBonus(b: RunBreakdown): number {
+  let s = b.fragments * PTS.crystal + b.warps * PTS.warp;
   for (let i = 0; i < Math.min(b.missionIndex, MISSIONS.length); i++) s += MISSIONS[i].reward;
   return s;
+}
+
+// The minimum (no-combo) score a run's counters could produce.
+export function scoreFromBreakdown(b: RunBreakdown): number {
+  return combatBase(b) + fixedBonus(b);
 }
 
 const isNum = (n: unknown) => typeof n === 'number' && Number.isFinite(n);
@@ -67,10 +80,17 @@ export function validateRun(b: RunBreakdown): RunCheck {
     return { ok: false, reason: 'malformed run', score: 0 };
   }
 
-  const expected = scoreFromBreakdown(b);
-  if (Math.abs(b.score - expected) > 5) {
-    return { ok: false, reason: 'score does not match counters', score: expected };
+  // With the combo multiplier, score isn't a single number — it's a range.
+  // Combat points can earn anywhere from 1x to COMBO_MAX; fixed bonuses don't scale.
+  const fixed = fixedBonus(b);
+  const combat = combatBase(b);
+  const minScore = combat + fixed;
+  const maxScore = combat * COMBO_MAX + fixed;
+  if (b.score < minScore - 5 || b.score > maxScore + 5) {
+    return { ok: false, reason: 'score outside plausible range', score: minScore };
   }
+  // Trust the reported score once it's inside the bounded range.
+  const expected = b.score;
 
   const dur = b.durationSec;
   if (dur < 8 || dur > 6 * 3600) {
