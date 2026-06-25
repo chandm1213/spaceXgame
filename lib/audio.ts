@@ -108,6 +108,12 @@ export const sfx = {
     tone('square', 78, 42, 2.0, 0.18);
     noiseBurst(1.8, 0.22, 220);
   },
+  power: () => {
+    // Bright triumphant power-up chime — three rising notes
+    tone('triangle', 520, 660, 0.1, 0.16);
+    setTimeout(() => tone('triangle', 780, 880, 0.1, 0.15), 70);
+    setTimeout(() => tone('square', 1040, 1320, 0.14, 0.13), 150);
+  },
   overdrive: () => {
     // Charging whine snapping into a cataclysmic shockwave
     tone('sine', 220, 2200, 0.35, 0.22);

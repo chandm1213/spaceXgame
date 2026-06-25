@@ -36,6 +36,26 @@ export interface CrystalData {
   seed: number;
 }
 
+// Timed buff / instant pickup dropped by hostiles.
+export type PowerKind = 'rapid' | 'triple' | 'damage' | 'magnet' | 'shield';
+
+export const POWER_DURATION = 8; // seconds a timed buff lasts
+export const POWER_KINDS: PowerKind[] = ['rapid', 'triple', 'damage', 'magnet', 'shield'];
+export const POWER_META: Record<PowerKind, { label: string; color: string; icon: string }> = {
+  rapid: { label: 'RAPID FIRE', color: '#fde047', icon: '⚡' },
+  triple: { label: 'TRIPLE SHOT', color: '#a78bfa', icon: '⫻' },
+  damage: { label: 'DOUBLE DAMAGE', color: '#f43f5e', icon: '✸' },
+  magnet: { label: 'MAGNET', color: '#22d3ee', icon: '⬡' },
+  shield: { label: 'SHIELD BOOST', color: '#34d399', icon: '◈' },
+};
+
+export interface PowerUpData {
+  id: number;
+  pos: THREE.Vector3;
+  kind: PowerKind;
+  seed: number;
+}
+
 // Drifting rock hazard. big === true is a meteoroid (tankier, hits harder).
 export interface AsteroidData {
   id: number;
@@ -124,6 +144,12 @@ interface GameState {
   wormhole: THREE.Vector3 | null; // open portal position, null when none present
   warpFlash: number; // timestamp of last warp, drives HUD flash + zone banner
 
+  // Power-ups: floating pickups + active timed buffs (expiry in performance.now() ms)
+  powerups: PowerUpData[];
+  buffs: { rapid: number; triple: number; damage: number; magnet: number };
+  lastPower: PowerKind | null; // most recent pickup, drives HUD toast
+  powerFlash: number;
+
   aliens: AlienData[];
   bolts: BoltData[];
   crystals: CrystalData[];
@@ -146,6 +172,7 @@ interface GameState {
   addBolt: (bolt: Omit<BoltData, 'id' | 'born'>) => void;
   removeBolt: (id: number) => void;
   collectCrystal: (id: number) => void;
+  collectPowerUp: (id: number) => void;
   spawnAsteroid: (pos: THREE.Vector3, vel: THREE.Vector3, big: boolean) => void;
   destroyAsteroid: (id: number, byCrash: boolean) => void;
   removeAsteroid: (id: number) => void;
@@ -200,6 +227,11 @@ export const useGame = create<GameState>((set, get) => ({
   wormhole: null,
   warpFlash: 0,
 
+  powerups: [],
+  buffs: { rapid: 0, triple: 0, damage: 0, magnet: 0 },
+  lastPower: null,
+  powerFlash: 0,
+
   aliens: [],
   bolts: [],
   crystals: [],
@@ -239,6 +271,10 @@ export const useGame = create<GameState>((set, get) => ({
       zone: 1,
       wormhole: null,
       warpFlash: 0,
+      powerups: [],
+      buffs: { rapid: 0, triple: 0, damage: 0, magnet: 0 },
+      lastPower: null,
+      powerFlash: 0,
       aliens: [],
       bolts: [],
       crystals: [],
@@ -399,9 +435,28 @@ export const useGame = create<GameState>((set, get) => ({
     const now = performance.now();
     const chain = byCrash ? s.combo : (s.combo > 0 && now <= s.comboExpire ? s.combo : 0) + 1;
     const mult = byCrash ? s.comboMult : comboMultiplier(chain);
+    // Power-up drops: grunts rarely, bosses guaranteed
+    const pdrops: PowerUpData[] = [];
+    if (!byCrash) {
+      const rolls = alien.kind === 3 ? 2 : alien.kind === 2 ? 1 : Math.random() < 0.07 ? 1 : 0;
+      for (let i = 0; i < rolls; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        pdrops.push({
+          id: uid(),
+          pos: new THREE.Vector3(
+            alien.pos.x + Math.cos(angle) * 2,
+            2.2,
+            alien.pos.z + Math.sin(angle) * 2
+          ),
+          kind: POWER_KINDS[Math.floor(Math.random() * POWER_KINDS.length)],
+          seed: Math.random() * 100,
+        });
+      }
+    }
     set({
       aliens: s.aliens.filter((a) => a.id !== id),
       crystals: [...s.crystals, ...drops],
+      powerups: pdrops.length ? [...s.powerups, ...pdrops] : s.powerups,
       booms: [
         ...s.booms,
         { id: uid(), pos: alien.pos.clone(), color: boomColor, big: alien.kind !== 1 },
@@ -443,6 +498,24 @@ export const useGame = create<GameState>((set, get) => ({
       };
     });
     if (counted) checkMission(get, set);
+  },
+
+  collectPowerUp: (id) => {
+    const s = get();
+    const p = s.powerups.find((x) => x.id === id);
+    if (!p) return;
+    const now = performance.now();
+    const powerups = s.powerups.filter((x) => x.id !== id);
+    if (p.kind === 'shield') {
+      set({ powerups, shields: Math.min(100, s.shields + 60), lastPower: 'shield', powerFlash: now });
+    } else {
+      set({
+        powerups,
+        buffs: { ...s.buffs, [p.kind]: now + POWER_DURATION * 1000 },
+        lastPower: p.kind,
+        powerFlash: now,
+      });
+    }
   },
 
   spawnAsteroid: (pos, vel, big) =>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useGame, COMBO_WINDOW } from '@/lib/store';
+import { useGame, COMBO_WINDOW, POWER_META, POWER_DURATION, PowerKind } from '@/lib/store';
 import { world, input } from '@/lib/world';
 import { initAudio, sfx } from '@/lib/audio';
 import { music } from '@/lib/music';
@@ -821,6 +821,87 @@ function ComboMeter() {
   );
 }
 
+const TIMED_BUFFS: PowerKind[] = ['rapid', 'triple', 'damage', 'magnet'];
+
+function ActiveBuffs() {
+  const slots = useRef<Record<string, { wrap: HTMLDivElement | null; bar: HTMLDivElement | null }>>({});
+
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const b = useGame.getState().buffs as Record<string, number>;
+      const now = performance.now();
+      for (const k of TIMED_BUFFS) {
+        const r = slots.current[k];
+        if (!r?.wrap) continue;
+        const rem = (b[k] - now) / (POWER_DURATION * 1000);
+        if (rem > 0) {
+          r.wrap.style.display = 'flex';
+          if (r.bar) r.bar.style.width = `${Math.min(1, rem) * 100}%`;
+        } else {
+          r.wrap.style.display = 'none';
+        }
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const setRef = (k: string, key: 'wrap' | 'bar') => (el: HTMLDivElement | null) => {
+    slots.current[k] = slots.current[k] || { wrap: null, bar: null };
+    slots.current[k][key] = el;
+  };
+
+  return (
+    <div className="pointer-events-none absolute bottom-24 left-3 z-20 flex flex-col gap-1.5 md:left-5">
+      {TIMED_BUFFS.map((k) => {
+        const m = POWER_META[k];
+        return (
+          <div
+            key={k}
+            ref={setRef(k, 'wrap')}
+            style={{ display: 'none', borderColor: `${m.color}66` }}
+            className="clip-corners w-32 items-center gap-2 border bg-slate-950/60 px-2 py-1 backdrop-blur-sm"
+          >
+            <span style={{ color: m.color }} className="text-sm leading-none">{m.icon}</span>
+            <div className="flex-1">
+              <div className="text-[8px] tracking-[0.2em]" style={{ color: m.color }}>{m.label}</div>
+              <div className="mt-0.5 h-0.5 w-full bg-black/40">
+                <div ref={setRef(k, 'bar')} className="h-full" style={{ background: m.color }} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PowerToast() {
+  const flash = useGame((s) => s.powerFlash);
+  const last = useGame((s) => s.lastPower);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!flash) return;
+    setShow(true);
+    const t = setTimeout(() => setShow(false), 1400);
+    return () => clearTimeout(t);
+  }, [flash]);
+  if (!show || !last) return null;
+  const m = POWER_META[last];
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-[30%] z-30 -translate-x-1/2 animate-comboPop text-center">
+      <div
+        className="text-2xl font-black tracking-[0.2em] md:text-3xl"
+        style={{ fontFamily: 'Orbitron, sans-serif', color: m.color, textShadow: `0 0 16px ${m.color}` }}
+      >
+        {m.icon} {m.label}
+      </div>
+    </div>
+  );
+}
+
 function OverdriveMeter() {
   const overdrive = useGame((s) => s.overdrive);
   const active = useGame((s) => s.overdriveActive);
@@ -1149,6 +1230,10 @@ export default function HUD() {
 
           {/* Kill-chain combo multiplier */}
           <ComboMeter />
+
+          {/* Power-up buffs + pickup toast */}
+          <ActiveBuffs />
+          <PowerToast />
 
           {/* Top-center: mission objective */}
           <MissionTracker />

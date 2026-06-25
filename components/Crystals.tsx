@@ -22,9 +22,11 @@ function Crystal({ data }: { data: CrystalData }) {
 
     const t = state.clock.elapsedTime + data.seed;
 
-    // Tractor pull when the ship is close — feels great to scoop
-    if (data.pos.distanceToSquared(world.shipPos) < MAGNET_RADIUS * MAGNET_RADIUS) {
-      data.pos.lerp(world.shipPos, Math.min(1, 4.5 * delta));
+    // Tractor pull when the ship is close — the MAGNET buff vacuums from afar
+    const magnet = game.buffs.magnet > performance.now();
+    const radius = magnet ? 48 : MAGNET_RADIUS;
+    if (data.pos.distanceToSquared(world.shipPos) < radius * radius) {
+      data.pos.lerp(world.shipPos, Math.min(1, (magnet ? 7 : 4.5) * delta));
     }
 
     g.position.set(data.pos.x, data.pos.y + Math.sin(t * 2.4) * 0.3, data.pos.z);

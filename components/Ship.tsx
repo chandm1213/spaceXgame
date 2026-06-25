@@ -37,7 +37,7 @@ export default function Ship() {
     const delta = Math.min(rawDelta, 0.05);
     const g = group.current;
     if (!g) return;
-    const { status, fuel, weaponId, addBolt, drain, setWeapon } = useGame.getState();
+    const { status, fuel, weaponId, addBolt, drain, setWeapon, buffs } = useGame.getState();
     if (status !== 'playing') return;
 
     // --- Weapon hot-swap: number keys 1-4 ---
@@ -141,12 +141,18 @@ export default function Ship() {
       muzzleLight.current.intensity = Math.max(0, muzzleLight.current.intensity - 220 * delta);
     }
     if ((input.firing || input.touchFiring) && fireTimer.current <= 0) {
-      fireTimer.current = weapon.cooldown;
+      // Active power-up buffs reshape the volley
+      const now = performance.now();
+      const rapid = buffs.rapid > now;
+      const triple = buffs.triple > now;
+      const dmg2 = buffs.damage > now;
+      fireTimer.current = weapon.cooldown * (rapid ? 0.4 : 1);
       const base = g.rotation.y;
-      const n = weapon.bolts;
+      const n = weapon.bolts + (triple ? 2 : 0);
+      const spread = triple ? Math.max(weapon.spread, 0.26) : weapon.spread;
       for (let i = 0; i < n; i++) {
         // Fan the volley evenly across the spread arc
-        const offset = n > 1 ? (i / (n - 1) - 0.5) * weapon.spread : 0;
+        const offset = n > 1 ? (i / (n - 1) - 0.5) * spread : 0;
         const heading = base + offset;
         fireDir.set(Math.sin(heading), 0, Math.cos(heading));
         muzzlePos.copy(g.position).addScaledVector(fireDir, 2.6);
@@ -154,7 +160,7 @@ export default function Ship() {
           pos: muzzlePos.clone(),
           dir: fireDir.clone().normalize(),
           color: weapon.color,
-          damage: weapon.damage,
+          damage: weapon.damage * (dmg2 ? 2 : 1),
           speed: weapon.speed,
           radius: weapon.radius,
           pierce: weapon.pierce,

@@ -12,6 +12,7 @@ import Aliens from './Aliens';
 import Asteroids from './Asteroids';
 import Bolts from './Bolts';
 import Crystals from './Crystals';
+import PowerUps from './PowerUps';
 import Explosions from './Explosions';
 import Wormhole from './Wormhole';
 import Overdrive from './Overdrive';
@@ -73,6 +74,7 @@ export default function Game() {
             <Asteroids />
             <Bolts />
             <Crystals />
+            <PowerUps />
             <Explosions />
             <Wormhole />
             <Overdrive />
