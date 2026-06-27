@@ -24,6 +24,7 @@ export function Director() {
   const rockTimer = useRef(0);
   const lastBossWave = useRef(0);
   const lastMotherWave = useRef(0);
+  const lastDreadWave = useRef(0);
   const zoneTimer = useRef(0);
   const lastZone = useRef(1);
 
@@ -82,11 +83,31 @@ export function Director() {
       sfx.mothership();
     }
 
-    // Behemoth boss every third wave (but a Mothership wave takes priority) — one at a time
+    // Dreadnought: a massive capital warship every 7th wave (Mothership still takes wave 5)
+    if (
+      game.wave >= 7 &&
+      game.wave % 7 === 0 &&
+      game.wave % 5 !== 0 &&
+      lastDreadWave.current !== game.wave &&
+      !game.aliens.some((a) => a.kind === 4)
+    ) {
+      lastDreadWave.current = game.wave;
+      const angle = Math.random() * Math.PI * 2;
+      spawnPos.set(
+        world.shipPos.x + Math.cos(angle) * 85,
+        5.0,
+        world.shipPos.z + Math.sin(angle) * 85
+      );
+      game.spawnAlien(spawnPos, 4);
+      sfx.dreadnought();
+    }
+
+    // Behemoth boss every third wave (Mothership + Dreadnought take priority) — one at a time
     if (
       game.wave >= 3 &&
       game.wave % 3 === 0 &&
       game.wave % 5 !== 0 &&
+      game.wave % 7 !== 0 &&
       lastBossWave.current !== game.wave &&
       !game.aliens.some((a) => a.kind === 2)
     ) {

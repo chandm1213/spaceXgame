@@ -141,16 +141,17 @@ function Radar() {
       for (const a of aliens) {
         const p = plot(a.pos.x, a.pos.z);
         if (!p) continue;
-        const boss = a.kind === 2 || a.kind === 3;
+        const boss = a.kind === 2 || a.kind === 3 || a.kind === 4;
         ctx.fillStyle =
-          a.kind === 3 ? '#e879f9'
+          a.kind === 4 ? '#06b6d4'
+          : a.kind === 3 ? '#e879f9'
           : a.kind === 2 ? '#f43f5e'
           : a.kind === 0 ? '#c084fc'
           : '#4ade80';
         ctx.shadowColor = ctx.fillStyle;
         ctx.shadowBlur = boss ? 10 : 6;
         ctx.beginPath();
-        ctx.arc(p.px, p.py, a.kind === 3 ? 7 : boss ? 5.5 : 3.2, 0, Math.PI * 2);
+        ctx.arc(p.px, p.py, a.kind === 4 ? 8 : a.kind === 3 ? 7 : boss ? 5.5 : 3.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.shadowBlur = 0;
       }

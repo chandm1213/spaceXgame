@@ -123,4 +123,17 @@ export const sfx = {
       noiseBurst(0.9, 0.4, 1600);
     }, 120);
   },
+  dreadnought: () => {
+    // Deep industrial alarm klaxon — heavier and more mechanical than Mothership
+    tone('sawtooth', 58, 28, 3.0, 0.45);
+    tone('square', 116, 56, 2.4, 0.24);
+    setTimeout(() => tone('sine', 2600, 900, 0.16, 0.3), 180);
+    setTimeout(() => tone('sine', 2600, 900, 0.16, 0.26), 560);
+    noiseBurst(2.2, 0.3, 160);
+  },
+  torp: () => {
+    // Short sharp torpedo launch — high-pitched pulse + thud
+    tone('sawtooth', 380, 90, 0.28, 0.2);
+    noiseBurst(0.2, 0.18, 700);
+  },
 };

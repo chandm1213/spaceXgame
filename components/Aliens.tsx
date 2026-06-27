@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useRef, useEffect } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGame, AlienData } from '@/lib/store';
 import { world } from '@/lib/world';
@@ -15,6 +15,7 @@ const PALETTE: Record<number, { body: string; glow: string }> = {
   1: { body: '#052e16', glow: '#4ade80' }, // Drone
   2: { body: '#450a0a', glow: '#fb7185' }, // Behemoth
   3: { body: '#1a0726', glow: '#e879f9' }, // Mothership
+  4: { body: '#060f1a', glow: '#06b6d4' }, // Dreadnought
 };
 
 function Alien({ data }: { data: AlienData }) {
@@ -318,12 +319,274 @@ function Alien({ data }: { data: AlienData }) {
   );
 }
 
+// ===== Dreadnought — massive angular cyan warship =====
+const DREAD_GLOW = '#06b6d4';
+const DREAD_BODY = '#060f1a';
+const DREAD_ENRAGE_HP = 0.3; // 30% HP
+const DREAD_CRASH_DIST = 8.5;
+const DREAD_TORP_SPEED = 9;
+const DREAD_TORP_DMG = 22;
+const DREAD_TORP_LIFE = 4.0;
+
+const dreadSeek = new THREE.Vector3();
+
+function Dreadnought({ data }: { data: AlienData }) {
+  const group = useRef<THREE.Group>(null);
+  const coreLight = useRef<THREE.PointLight>(null);
+  const healthBar = useRef<THREE.Mesh>(null);
+  const eng0 = useRef<THREE.MeshBasicMaterial>(null);
+  const eng1 = useRef<THREE.MeshBasicMaterial>(null);
+  const eng2 = useRef<THREE.MeshBasicMaterial>(null);
+  const eng3 = useRef<THREE.MeshBasicMaterial>(null);
+
+  const torpScene = useRef<THREE.Group | null>(null);
+  const torpData = useRef<{ mesh: THREE.Mesh; pos: THREE.Vector3; vel: THREE.Vector3; born: number }[]>([]);
+  const torpGeo = useRef<THREE.SphereGeometry | null>(null);
+  const torpMat = useRef<THREE.MeshBasicMaterial | null>(null);
+  const torpFireTimer = useRef(3.5);
+
+  const { scene } = useThree();
+
+  useEffect(() => {
+    const g = new THREE.Group();
+    scene.add(g);
+    torpScene.current = g;
+    return () => {
+      torpData.current.forEach((t) => g.remove(t.mesh));
+      scene.remove(g);
+      torpGeo.current?.dispose();
+      torpMat.current?.dispose();
+      torpData.current = [];
+    };
+  }, [scene]);
+
+  useFrame((state, rawDelta) => {
+    const delta = Math.min(rawDelta, 0.05);
+    const g = group.current;
+    if (!g) return;
+    const game = useGame.getState();
+    if (game.status !== 'playing') return;
+
+    const tDelta = delta * world.timeScale;
+    const t = state.clock.elapsedTime + data.seed;
+    const enraged = data.hp < data.maxHp * DREAD_ENRAGE_HP;
+
+    dreadSeek.copy(world.shipPos).sub(data.pos);
+    dreadSeek.y = 0;
+    const distance = dreadSeek.length();
+    const speed = enraged ? 3.1 : Math.min(1.8 + game.wave * 0.04, 2.8);
+    if (distance > 0.001) {
+      dreadSeek.normalize();
+      const weave = Math.sin(t * 0.9) * 0.12;
+      data.pos.x += (dreadSeek.x + dreadSeek.z * weave) * speed * tDelta;
+      data.pos.z += (dreadSeek.z - dreadSeek.x * weave) * speed * tDelta;
+    }
+    data.pos.y = 5.0 + Math.sin(t * 1.0) * 0.7;
+
+    g.position.copy(data.pos);
+    if (distance > 0.001) g.rotation.y = Math.atan2(dreadSeek.x, dreadSeek.z);
+    g.rotation.z = Math.sin(t * 0.9) * 0.06;
+
+    // Core light: cyan, red-orange when enraged
+    if (coreLight.current) {
+      const c = enraged ? '#ff5520' : DREAD_GLOW;
+      const pulse = 0.7 + Math.sin(t * (enraged ? 9 : 3)) * 0.3;
+      coreLight.current.color.set(c);
+      coreLight.current.intensity = (enraged ? 300 : 190) * pulse;
+    }
+
+    // Engine exhaust colours
+    const engColor = enraged ? '#ff6040' : DREAD_GLOW;
+    const engPulse = 0.65 + Math.sin(t * 4) * 0.35;
+    for (const mat of [eng0.current, eng1.current, eng2.current, eng3.current]) {
+      if (!mat) continue;
+      mat.color.set(engColor);
+      mat.opacity = engPulse;
+    }
+
+    // Health bar faces camera
+    if (healthBar.current) {
+      healthBar.current.scale.x = Math.max(0.001, data.hp / data.maxHp);
+      healthBar.current.parent!.quaternion.copy(state.camera.quaternion);
+    }
+
+    // ── Torpedo system ──
+    const tg = torpScene.current;
+    if (tg) {
+      torpFireTimer.current -= tDelta;
+      if (torpFireTimer.current <= 0) {
+        torpFireTimer.current = enraged ? 1.8 : 4.0;
+        if (!torpGeo.current) torpGeo.current = new THREE.SphereGeometry(0.38, 8, 8);
+        if (!torpMat.current)
+          torpMat.current = new THREE.MeshBasicMaterial({
+            color: DREAD_GLOW,
+            toneMapped: false,
+          });
+        const mesh = new THREE.Mesh(torpGeo.current, torpMat.current);
+        // Fire from the torpedo pod positions (in local space → world space)
+        const offset = new THREE.Vector3(0, 0, 2.2).applyEuler(g.rotation);
+        mesh.position.copy(data.pos).add(offset);
+        tg.add(mesh);
+        const vel = world.shipPos.clone().sub(mesh.position);
+        vel.y = 0;
+        vel.normalize().multiplyScalar(DREAD_TORP_SPEED);
+        torpData.current.push({ mesh, pos: mesh.position, vel, born: performance.now() });
+        sfx.torp();
+      }
+
+      const now = performance.now();
+      torpData.current = torpData.current.filter((t) => {
+        const age = (now - t.born) / 1000;
+        if (age > DREAD_TORP_LIFE) {
+          tg.remove(t.mesh);
+          return false;
+        }
+        t.pos.addScaledVector(t.vel, tDelta);
+        if (t.pos.distanceTo(world.shipPos) < 2.5) {
+          tg.remove(t.mesh);
+          game.damage(DREAD_TORP_DMG);
+          sfx.hit();
+          return false;
+        }
+        return true;
+      });
+    }
+
+    // Crash detection
+    if (distance < DREAD_CRASH_DIST) {
+      game.killAlien(data.id, true);
+      game.damage(60);
+      sfx.hit();
+    }
+  });
+
+  const ENGINES: [number, number][] = [[-1.0, 0], [1.0, 0], [-2.8, 0], [2.8, 0]];
+  const engRefs = [eng0, eng1, eng2, eng3];
+
+  return (
+    <group ref={group} position={data.pos}>
+      <pointLight ref={coreLight} position={[0, 0.5, -1]} intensity={190} distance={90} color={DREAD_GLOW} />
+
+      {/* Main elongated hull */}
+      <mesh castShadow>
+        <boxGeometry args={[2.5, 1.0, 9.0]} />
+        <meshStandardMaterial color={DREAD_BODY} metalness={0.92} roughness={0.18} emissive={DREAD_GLOW} emissiveIntensity={0.12} />
+      </mesh>
+
+      {/* Bow nosecone — points toward the player (+Z) */}
+      <mesh castShadow position={[0, 0, 4.75]} rotation={[-Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[1.25, 1.5, 8]} />
+        <meshStandardMaterial color={DREAD_BODY} metalness={0.95} roughness={0.15} emissive={DREAD_GLOW} emissiveIntensity={0.08} />
+      </mesh>
+
+      {/* Command bridge on top */}
+      <mesh castShadow position={[0, 1.0, -0.6]}>
+        <boxGeometry args={[2.0, 0.85, 3.2]} />
+        <meshStandardMaterial color={DREAD_BODY} metalness={0.9} roughness={0.22} emissive={DREAD_GLOW} emissiveIntensity={0.2} />
+      </mesh>
+      {/* Bridge viewport windows */}
+      {([-0.5, 0, 0.5] as const).map((z, i) => (
+        <mesh key={i} position={[1.01, 1.0, -0.6 + z]}>
+          <boxGeometry args={[0.02, 0.22, 0.28]} />
+          <meshBasicMaterial color="#67e8f9" toneMapped={false} />
+        </mesh>
+      ))}
+
+      {/* Left wing */}
+      <mesh castShadow position={[-3.5, -0.15, -1.5]} rotation={[0, 0, 0.1]}>
+        <boxGeometry args={[5.0, 0.28, 6.8]} />
+        <meshStandardMaterial color={DREAD_BODY} metalness={0.9} roughness={0.2} emissive={DREAD_GLOW} emissiveIntensity={0.09} />
+      </mesh>
+      {/* Right wing */}
+      <mesh castShadow position={[3.5, -0.15, -1.5]} rotation={[0, 0, -0.1]}>
+        <boxGeometry args={[5.0, 0.28, 6.8]} />
+        <meshStandardMaterial color={DREAD_BODY} metalness={0.9} roughness={0.2} emissive={DREAD_GLOW} emissiveIntensity={0.09} />
+      </mesh>
+
+      {/* Cyan energy stripe along each wing leading edge */}
+      <mesh position={[-3.5, -0.01, 2.0]}>
+        <boxGeometry args={[4.5, 0.06, 0.18]} />
+        <meshBasicMaterial color={DREAD_GLOW} transparent opacity={0.7} toneMapped={false} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+      <mesh position={[3.5, -0.01, 2.0]}>
+        <boxGeometry args={[4.5, 0.06, 0.18]} />
+        <meshBasicMaterial color={DREAD_GLOW} transparent opacity={0.7} toneMapped={false} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+
+      {/* Torpedo launcher pods (fired from these positions) */}
+      {([-1.4, 1.4] as const).map((x, i) => (
+        <group key={i} position={[x, 0.25, 2.0]}>
+          <mesh castShadow>
+            <boxGeometry args={[0.65, 0.55, 1.3]} />
+            <meshStandardMaterial color="#040c14" metalness={0.95} roughness={0.18} emissive={DREAD_GLOW} emissiveIntensity={0.4} />
+          </mesh>
+          {/* Barrel */}
+          <mesh castShadow position={[0, 0, 0.75]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.13, 0.13, 1.1, 8]} />
+            <meshStandardMaterial color="#020a10" metalness={0.98} roughness={0.1} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Engine nacelles — 4 at the rear (-Z) */}
+      {ENGINES.map(([x], i) => (
+        <group key={i} position={[x, -0.2, -5.3]}>
+          <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.48, 0.58, 1.9, 12]} />
+            <meshStandardMaterial color={DREAD_BODY} metalness={0.9} roughness={0.25} />
+          </mesh>
+          {/* Glowing exhaust sphere */}
+          <mesh position={[0, 0, -1.0]}>
+            <sphereGeometry args={[0.4, 8, 8]} />
+            <meshBasicMaterial
+              ref={engRefs[i]}
+              color={DREAD_GLOW}
+              transparent
+              opacity={0.9}
+              toneMapped={false}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Wing running lights */}
+      {Array.from({ length: 6 }).map((_, i) => {
+        const side = i < 3 ? -1 : 1;
+        const zi = i % 3;
+        return (
+          <mesh key={i} position={[side * (2.2 + zi * 0.9), -0.16, -0.5 + zi * 0.6]}>
+            <sphereGeometry args={[0.08, 6, 6]} />
+            <meshBasicMaterial color={zi === 0 ? '#67e8f9' : '#fb923c'} toneMapped={false} />
+          </mesh>
+        );
+      })}
+
+      {/* Floating health bar */}
+      <group position={[0, 8.2, 0]}>
+        <mesh position={[0, 0, -0.01]}>
+          <planeGeometry args={[10, 0.58]} />
+          <meshBasicMaterial color="#051218" transparent opacity={0.8} toneMapped={false} />
+        </mesh>
+        <mesh ref={healthBar} position={[0, 0, 0]}>
+          <planeGeometry args={[9.7, 0.4]} />
+          <meshBasicMaterial color={DREAD_GLOW} toneMapped={false} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 export default function Aliens() {
   const aliens = useGame((s) => s.aliens);
   return (
     <>
-      {aliens.map((a) => (
+      {aliens.filter((a) => a.kind !== 4).map((a) => (
         <Alien key={a.id} data={a} />
+      ))}
+      {aliens.filter((a) => a.kind === 4).map((a) => (
+        <Dreadnought key={a.id} data={a} />
       ))}
     </>
   );

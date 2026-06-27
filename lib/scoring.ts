@@ -8,6 +8,7 @@ const PTS = {
   grunt: 100, // stalker (0) and drone (1)
   behemoth: 750, // kind 2
   mother: 2500, // kind 3
+  dreadnought: 4000, // kind 4
   rockSmall: 40,
   rockBig: 120,
   crystal: 25, // == one fragment collected
@@ -21,6 +22,7 @@ export interface RunBreakdown {
   killDrone: number;
   killBehemoth: number;
   killMother: number;
+  killDreadnought: number;
   rockSmall: number;
   rockBig: number;
   fragments: number; // crystals collected
@@ -42,6 +44,7 @@ function combatBase(b: RunBreakdown): number {
     (b.killStalker + b.killDrone) * PTS.grunt +
     b.killBehemoth * PTS.behemoth +
     b.killMother * PTS.mother +
+    b.killDreadnought * PTS.dreadnought +
     b.rockSmall * PTS.rockSmall +
     b.rockBig * PTS.rockBig
   );
@@ -72,7 +75,7 @@ export interface RunCheck {
 // This is a coarse automated filter — winners are still reviewed before payout.
 export function validateRun(b: RunBreakdown): RunCheck {
   const counters = [
-    b.killStalker, b.killDrone, b.killBehemoth, b.killMother,
+    b.killStalker, b.killDrone, b.killBehemoth, b.killMother, b.killDreadnought,
     b.rockSmall, b.rockBig, b.fragments, b.warps, b.missionIndex,
     b.score, b.wave, b.kills, b.durationSec,
   ];
@@ -97,7 +100,7 @@ export function validateRun(b: RunBreakdown): RunCheck {
     return { ok: false, reason: 'implausible run length', score: expected };
   }
 
-  const totalKills = b.killStalker + b.killDrone + b.killBehemoth + b.killMother;
+  const totalKills = b.killStalker + b.killDrone + b.killBehemoth + b.killMother + b.killDreadnought;
   if (Math.abs(totalKills - b.kills) > 2) {
     return { ok: false, reason: 'kill count mismatch', score: expected };
   }
@@ -113,7 +116,7 @@ export function validateRun(b: RunBreakdown): RunCheck {
     return { ok: false, reason: 'wave too high for the time', score: expected };
   }
   // Behemoth every 3rd wave, Mothership every 5th — bosses can't exceed the wave count.
-  if (b.killBehemoth + b.killMother > b.wave) {
+  if (b.killBehemoth + b.killMother + b.killDreadnought > b.wave) {
     return { ok: false, reason: 'too many bosses for the wave', score: expected };
   }
 

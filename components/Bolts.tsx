@@ -27,7 +27,7 @@ function Bolt({ data }: { data: BoltData }) {
 
     // Bounding-sphere intersection against every alien
     for (const alien of game.aliens) {
-      const reach = data.radius * 1.7 + (alien.kind === 3 ? 5.2 : alien.kind === 2 ? 2.6 : 0);
+      const reach = data.radius * 1.7 + (alien.kind === 4 ? 4.8 : alien.kind === 3 ? 5.2 : alien.kind === 2 ? 2.6 : 0);
       if (data.pos.distanceToSquared(alien.pos) < reach * reach) {
         alien.hp -= data.damage;
         if (alien.hp <= 0) {

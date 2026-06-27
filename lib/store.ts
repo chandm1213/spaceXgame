@@ -6,8 +6,8 @@ import type { RunBreakdown } from './scoring';
 
 export type GameStatus = 'menu' | 'playing' | 'gameover';
 
-// 0 = Stalker (purple), 1 = Drone (green), 2 = Behemoth boss (red), 3 = Mothership (magenta)
-export type AlienKind = 0 | 1 | 2 | 3;
+// 0 = Stalker (purple), 1 = Drone (green), 2 = Behemoth boss (red), 3 = Mothership (magenta), 4 = Dreadnought (cyan)
+export type AlienKind = 0 | 1 | 2 | 3 | 4;
 
 export interface AlienData {
   id: number;
@@ -74,7 +74,7 @@ export interface BoomData {
   big: boolean;
 }
 
-const ALIEN_HP: Record<AlienKind, number> = { 0: 2, 1: 1, 2: 45, 3: 130 };
+const ALIEN_HP: Record<AlienKind, number> = { 0: 2, 1: 1, 2: 45, 3: 130, 4: 200 };
 
 // COMBO: consecutive kills within this window keep the chain alive; the
 // multiplier climbs one step every 3 kills, capped at x8.
@@ -85,7 +85,7 @@ export function comboMultiplier(combo: number) {
 }
 
 // Overdrive charge gained per hostile destroyed (caps at 100 = ready)
-const OVERDRIVE_CHARGE: Record<AlienKind, number> = { 0: 7, 1: 5, 2: 38, 3: 55 };
+const OVERDRIVE_CHARGE: Record<AlienKind, number> = { 0: 7, 1: 5, 2: 38, 3: 55, 4: 70 };
 
 const HIGHSCORE_KEY = 'sbh-highscore';
 function loadHighScore() {
@@ -110,6 +110,7 @@ interface GameState {
   killDrone: number;
   killBehemoth: number;
   killMother: number;
+  killDreadnought: number;
   rockSmall: number;
   rockBig: number;
   warps: number;
@@ -200,6 +201,7 @@ export const useGame = create<GameState>((set, get) => ({
   killDrone: 0,
   killBehemoth: 0,
   killMother: 0,
+  killDreadnought: 0,
   rockSmall: 0,
   rockBig: 0,
   warps: 0,
@@ -254,6 +256,7 @@ export const useGame = create<GameState>((set, get) => ({
       killDrone: 0,
       killBehemoth: 0,
       killMother: 0,
+      killDreadnought: 0,
       rockSmall: 0,
       rockBig: 0,
       warps: 0,
@@ -300,6 +303,7 @@ export const useGame = create<GameState>((set, get) => ({
       killDrone: s.killDrone,
       killBehemoth: s.killBehemoth,
       killMother: s.killMother,
+      killDreadnought: s.killDreadnought,
       rockSmall: s.rockSmall,
       rockBig: s.rockBig,
       fragments: s.fragments,
@@ -330,22 +334,24 @@ export const useGame = create<GameState>((set, get) => ({
     let haul = 0;
     let kills = s.kills;
     let bossKills = s.bossKills;
-    let kStalker = 0, kDrone = 0, kBehemoth = 0, kMother = 0, rSmall = 0, rBig = 0;
+    let kStalker = 0, kDrone = 0, kBehemoth = 0, kMother = 0, kDreadnought = 0, rSmall = 0, rBig = 0;
     const booms: BoomData[] = [...s.booms];
     for (const a of s.aliens) {
-      const isApex = a.kind === 2 || a.kind === 3;
-      haul += a.kind === 3 ? 2500 : a.kind === 2 ? 750 : 100;
+      const isApex = a.kind === 2 || a.kind === 3 || a.kind === 4;
+      haul += a.kind === 4 ? 4000 : a.kind === 3 ? 2500 : a.kind === 2 ? 750 : 100;
       kills += 1;
       if (isApex) bossKills += 1;
       if (a.kind === 0) kStalker += 1;
       else if (a.kind === 1) kDrone += 1;
       else if (a.kind === 2) kBehemoth += 1;
-      else kMother += 1;
+      else if (a.kind === 3) kMother += 1;
+      else kDreadnought += 1;
       booms.push({
         id: uid(),
         pos: a.pos.clone(),
         color:
-          a.kind === 3 ? '#e879f9'
+          a.kind === 4 ? '#06b6d4'
+          : a.kind === 3 ? '#e879f9'
           : a.kind === 2 ? '#f87171'
           : a.kind === 0 ? '#c084fc'
           : '#4ade80',
@@ -377,6 +383,7 @@ export const useGame = create<GameState>((set, get) => ({
       killDrone: s.killDrone + kDrone,
       killBehemoth: s.killBehemoth + kBehemoth,
       killMother: s.killMother + kMother,
+      killDreadnought: s.killDreadnought + kDreadnought,
       rockSmall: s.rockSmall + rSmall,
       rockBig: s.rockBig + rBig,
       overdrive: 0,
@@ -404,10 +411,10 @@ export const useGame = create<GameState>((set, get) => ({
     const s = get();
     const alien = s.aliens.find((a) => a.id === id);
     if (!alien) return;
-    const isApex = alien.kind === 2 || alien.kind === 3; // bosses
+    const isApex = alien.kind === 2 || alien.kind === 3 || alien.kind === 4; // bosses
     // Star fragments always scatter, even on crash — crash damage is already the penalty
     const drops: CrystalData[] = [];
-    const count = alien.kind === 3 ? 14 : alien.kind === 2 ? 9 : alien.kind === 0 ? 3 : 2;
+    const count = alien.kind === 4 ? 18 : alien.kind === 3 ? 14 : alien.kind === 2 ? 9 : alien.kind === 0 ? 3 : 2;
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const radius = 1 + Math.random() * (isApex ? 5 : 2.5);
@@ -421,9 +428,10 @@ export const useGame = create<GameState>((set, get) => ({
         seed: Math.random() * 100,
       });
     }
-    const gained = alien.kind === 3 ? 2500 : alien.kind === 2 ? 750 : 100;
+    const gained = alien.kind === 4 ? 4000 : alien.kind === 3 ? 2500 : alien.kind === 2 ? 750 : 100;
     const boomColor =
-      alien.kind === 3 ? '#e879f9'
+      alien.kind === 4 ? '#06b6d4'
+      : alien.kind === 3 ? '#e879f9'
       : alien.kind === 2 ? '#f87171'
       : alien.kind === 0 ? '#c084fc'
       : '#4ade80';
@@ -438,7 +446,7 @@ export const useGame = create<GameState>((set, get) => ({
     // Power-up drops: grunts rarely, bosses guaranteed
     const pdrops: PowerUpData[] = [];
     if (!byCrash) {
-      const rolls = alien.kind === 3 ? 2 : alien.kind === 2 ? 1 : Math.random() < 0.07 ? 1 : 0;
+      const rolls = alien.kind === 4 ? 3 : alien.kind === 3 ? 2 : alien.kind === 2 ? 1 : Math.random() < 0.07 ? 1 : 0;
       for (let i = 0; i < rolls; i++) {
         const angle = Math.random() * Math.PI * 2;
         pdrops.push({
@@ -472,6 +480,7 @@ export const useGame = create<GameState>((set, get) => ({
       killDrone: s.killDrone + (!byCrash && alien.kind === 1 ? 1 : 0),
       killBehemoth: s.killBehemoth + (!byCrash && alien.kind === 2 ? 1 : 0),
       killMother: s.killMother + (!byCrash && alien.kind === 3 ? 1 : 0),
+      killDreadnought: s.killDreadnought + (!byCrash && alien.kind === 4 ? 1 : 0),
       overdrive,
     });
     if (!byCrash) checkMission(get, set);
